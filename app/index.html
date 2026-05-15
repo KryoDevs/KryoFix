@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Servicio Técnico</title>
+    <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 TechFix Tracker</h1>
+            <p>Panel de control para ingreso y diagnóstico de equipos</p>
+        </header>
+
+        <div class="panel-ingreso">
+            <h3>📝 Nuevo Ingreso</h3>
+            
+            <div id="alerta-exito" class="alerta-exito">
+                ✅ ¡El equipo se ha ingresado correctamente al taller!
+            </div>
+
+            <form id="proyecto-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cliente">Nombre del Cliente:</label>
+                        <input type="text" id="cliente" placeholder="Ej. Juan Pérez" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="telefono">Teléfono de Contacto:</label>
+                        <input type="tel" id="telefono" placeholder="+56 9 1234 5678" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="equipo">Tipo de Equipo:</label>
+                        <select id="equipo" required>
+                            <option value="notebook">💻 Notebook</option>
+                            <option value="smartphone">📱 Smartphone</option>
+                            <option value="audio">🔊 Equipo de Audio</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="modelo">Marca y Modelo:</label>
+                        <input type="text" id="modelo" placeholder="Ej. Asus TUF F15, Samsung A33..." required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="accesorios">Accesorios Recibidos (Opcional):</label>
+                    <input type="text" id="accesorios" placeholder="Ej. Cargador de 56Wh, funda negra...">
+                </div>
+
+                <div class="form-group">
+                    <label for="falla">Diagnóstico / Trabajo a realizar:</label>
+                    <textarea id="falla" rows="3" placeholder="Ej. Limpieza y cambio de pasta térmica, reemplazo de pantalla..." required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="estado">Estado del Servicio:</label>
+                        <select id="estado" required>
+                            <option value="ingresado">📥 Ingresado</option>
+                            <option value="revision">🔍 En Revisión</option>
+                            <option value="repuesto">⏳ Esperando Repuesto</option>
+                            <option value="reparado">✅ Listo para Entregar</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="costo">Presupuesto Estimado ($):</label>
+                        <input type="number" id="costo" placeholder="Ej. 35000" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-guardar">💾 Guardar Ficha de Ingreso</button>
+            </form>
+        </div>
+
+        <div class="panel-registros">
+            <h2>📋 Equipos en Taller</h2>
+            <div id="lista-proyectos" class="grid-proyectos">
+                </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

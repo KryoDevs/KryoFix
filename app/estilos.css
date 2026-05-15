@@ -1,0 +1,75 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #e2e8f0;
+    color: #1e293b;
+    margin: 0;
+    padding: 20px;
+}
+
+.container { max-width: 900px; margin: 0 auto; }
+header { text-align: center; margin-bottom: 20px; }
+h1 { color: #0f172a; margin-bottom: 5px; font-size: 2.2rem; }
+header p { color: #475569; margin-top: 0; }
+
+.panel-ingreso, .panel-registros {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.panel-ingreso h3 { margin-top: 0; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; color: #334155; }
+
+.alerta-exito {
+    background-color: #d1fae5; color: #065f46; padding: 12px; border-radius: 8px;
+    border: 1px solid #34d399; margin-bottom: 20px; text-align: center;
+    font-weight: bold; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.form-row { display: flex; gap: 15px; }
+.form-group { flex: 1; display: flex; flex-direction: column; margin-bottom: 15px; }
+label { font-weight: 600; font-size: 13px; color: #475569; margin-bottom: 6px; }
+
+input, select, textarea {
+    padding: 10px 12px; font-size: 14px; border: 1px solid #cbd5e1;
+    border-radius: 6px; background-color: #f8fafc; width: 100%; box-sizing: border-box;
+}
+
+.btn-guardar {
+    width: 100%; background-color: #2563eb; color: white; border: none;
+    padding: 12px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px;
+}
+.btn-guardar:hover { background-color: #1d4ed8; }
+
+.grid-proyectos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+
+.tarjeta {
+    background: #fff; border: 1px solid #e2e8f0; border-left: 6px solid #cbd5e1;
+    padding: 16px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.tarjeta.notebook { border-left-color: #3b82f6; } 
+.tarjeta.smartphone { border-left-color: #10b981; } 
+.tarjeta.audio { border-left-color: #f59e0b; } 
+
+.tarjeta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.tarjeta h4 { margin: 0; font-size: 18px; color: #0f172a; }
+.fecha { font-size: 12px; color: #64748b; }
+.tarjeta p { margin: 6px 0; font-size: 14px; color: #334155; }
+
+.badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 8px; }
+.badge.ingresado { background-color: #e2e8f0; color: #475569; }
+.badge.revision { background-color: #fef08a; color: #854d0e; }
+.badge.repuesto { background-color: #fecdd3; color: #be123c; }
+.badge.reparado { background-color: #bbf7d0; color: #166534; }
+
+.precio { font-weight: bold; color: #059669; font-size: 16px; margin-top: 10px !important; }
+
+.btn-entregar {
+    background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+    width: 100%; margin-top: 15px; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold;
+}
+.btn-entregar:hover { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+@media (max-width: 600px) { .form-row { flex-direction: column; gap: 0; } }
