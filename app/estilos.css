@@ -1,108 +1,144 @@
+/* Variables para Modo Claro / Oscuro */
+:root {
+    --bg-main: #e2e8f0;
+    --bg-card: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #cbd5e1;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --input-bg: #f8fafc;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+    --bg-main: #0f172a;
+    --bg-card: #1e293b;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --input-bg: #0f172a;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #e2e8f0;
-    color: #1e293b;
+    background-color: var(--bg-main);
+    color: var(--text-main);
     margin: 0;
-    padding: 20px;
+    padding: 0;
+    transition: background-color 0.3s, color 0.3s;
 }
 
-.container { max-width: 900px; margin: 0 auto; }
-header { text-align: center; margin-bottom: 20px; }
-h1 { color: #0f172a; margin-bottom: 5px; font-size: 2.2rem; }
-header p { color: #475569; margin-top: 0; }
+.container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+
+/* Login Screen */
+.login-container {
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; background-color: var(--bg-main);
+}
+.login-box {
+    background: var(--bg-card); padding: 40px; border-radius: 12px;
+    box-shadow: var(--shadow); width: 100%; max-width: 400px; text-align: center;
+}
+.login-box h2 { margin-top: 0; color: var(--text-main); }
+.login-box p { color: var(--text-muted); margin-bottom: 20px; }
+.login-box input { margin-bottom: 15px; }
+
+/* Topbar */
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.topbar h1 { margin: 0; font-size: 1.8rem; color: var(--text-main); }
+.user-actions { display: flex; gap: 10px; }
+.btn-icon { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+.btn-icon:hover { background: var(--input-bg); }
+.btn-outline-danger { color: #dc2626; border-color: #fca5a5; }
+.btn-outline-danger:hover { background: #fee2e2; }
+
+/* Dashboard */
+.dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+.stat-card { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; box-shadow: var(--shadow); }
+.stat-card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; }
+.stat-card h2 { margin: 0; font-size: 28px; color: var(--primary); }
+.stat-money h2 { color: #10b981; }
 
 .panel-ingreso, .panel-registros {
-    background: white;
+    background: var(--bg-card);
     padding: 25px;
     border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
     margin-bottom: 30px;
+    border: 1px solid var(--border-color);
 }
 
-.panel-ingreso h3 { margin-top: 0; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; color: #334155; }
-
-.alerta-exito {
-    background-color: #d1fae5; color: #065f46; padding: 12px; border-radius: 8px;
-    border: 1px solid #34d399; margin-bottom: 20px; text-align: center;
-    font-weight: bold; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
+.panel-ingreso h3 { margin-top: 0; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; }
 
 .form-row { display: flex; gap: 15px; }
 .form-group { flex: 1; display: flex; flex-direction: column; margin-bottom: 15px; }
-label { font-weight: 600; font-size: 13px; color: #475569; margin-bottom: 6px; }
+label { font-weight: 600; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+small { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
 input, select, textarea {
-    padding: 10px 12px; font-size: 14px; border: 1px solid #cbd5e1;
-    border-radius: 6px; background-color: #f8fafc; width: 100%; box-sizing: border-box;
+    padding: 10px 12px; font-size: 14px; border: 1px solid var(--border-color);
+    border-radius: 6px; background-color: var(--input-bg); color: var(--text-main); width: 100%; box-sizing: border-box;
 }
 
 .btn-guardar {
-    width: 100%; background-color: #2563eb; color: white; border: none;
+    width: 100%; background-color: var(--primary); color: white; border: none;
     padding: 12px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px;
 }
-.btn-guardar:hover { background-color: #1d4ed8; }
+.btn-guardar:hover { background-color: var(--primary-hover); }
 
-/* Registros Header y Filtros */
-.header-registros {
-    display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;
-    border-bottom: 2px solid #f1f5f9; padding-bottom: 15px;
-}
+/* Loader */
+.loader { text-align: center; padding: 20px; font-weight: bold; color: var(--primary); }
+
+/* Filtros */
+.header-registros { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 15px; }
 .header-registros h2 { margin: 0; }
-.controles-busqueda {
-    display: flex; gap: 10px;
-}
+.controles-busqueda { display: flex; gap: 10px; }
 #buscador { flex: 2; }
 #filtro-estado { flex: 1; }
-.sin-resultados { text-align: center; color: #64748b; font-style: italic; grid-column: 1 / -1; }
+.sin-resultados { text-align: center; color: var(--text-muted); font-style: italic; grid-column: 1 / -1; }
 
-.grid-proyectos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+.grid-proyectos { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
 
 .tarjeta {
-    background: #fff; border: 1px solid #e2e8f0; border-left: 6px solid #cbd5e1;
-    padding: 16px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-    display: flex; flex-direction: column;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-left: 6px solid var(--border-color);
+    padding: 16px; border-radius: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column;
 }
 .tarjeta.entregado-style { opacity: 0.7; filter: grayscale(0.5); }
 
 .tarjeta.notebook { border-left-color: #3b82f6; } 
 .tarjeta.smartphone { border-left-color: #10b981; } 
 .tarjeta.audio { border-left-color: #f59e0b; } 
+.tarjeta.consola { border-left-color: #8b5cf6; } 
 
 .tarjeta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.tarjeta h4 { margin: 0; font-size: 18px; color: #0f172a; }
-.fecha { font-size: 12px; color: #64748b; }
-.tarjeta p { margin: 6px 0; font-size: 14px; color: #334155; }
+.tarjeta h4 { margin: 0; font-size: 18px; }
+.fecha { font-size: 12px; color: var(--text-muted); }
+.tarjeta p { margin: 6px 0; font-size: 14px; }
+.detalle-extra { font-size: 12px; color: var(--text-muted); display: block; margin-top: 2px;}
 
 /* Select de Estado */
 .tarjeta-estado { margin-bottom: 10px; }
-.select-estado {
-    padding: 4px 8px; font-weight: bold; border-radius: 6px; font-size: 13px;
-    border: 1px solid #cbd5e1; cursor: pointer; width: 100%;
-}
+.select-estado { padding: 4px 8px; font-weight: bold; border-radius: 6px; font-size: 13px; border: 1px solid var(--border-color); cursor: pointer; width: 100%; }
 .select-estado.ingresado { background-color: #e2e8f0; color: #475569; }
 .select-estado.revision { background-color: #fef08a; color: #854d0e; }
 .select-estado.repuesto { background-color: #fecdd3; color: #be123c; }
 .select-estado.reparado { background-color: #bbf7d0; color: #166534; }
 .select-estado.entregado { background-color: #cbd5e1; color: #334155; }
 
-.precio { font-weight: bold; color: #059669; font-size: 16px; margin-top: auto !important; margin-bottom: 15px !important;}
+.precio { font-weight: bold; color: #10b981; font-size: 16px; margin-top: auto !important; margin-bottom: 15px !important;}
 
 /* Acciones de la Tarjeta */
-.acciones-tarjeta { display: flex; gap: 8px; margin-top: auto; }
-.btn-imprimir, .btn-entregar, .btn-eliminar {
-    flex: 1; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; border: 1px solid #cbd5e1;
-}
-.btn-imprimir { background-color: #f8fafc; color: #334155; }
-.btn-imprimir:hover { background-color: #f1f5f9; }
+.acciones-tarjeta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+.btn-accion { padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; border: 1px solid var(--border-color); text-align: center; }
 
-.btn-entregar { background-color: #f1f5f9; color: #475569; }
-.btn-entregar:hover { background-color: #dcfce7; color: #166534; border-color: #86efac; }
-
-.btn-eliminar { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; }
-.btn-eliminar:hover { background-color: #f87171; color: white; }
-
-/* Plantilla Oculta */
-.ticket-impresion { display: none; }
+.btn-imprimir { background-color: var(--input-bg); color: var(--text-main); }
+.btn-wsp { background-color: #25D366; color: white; border: none; }
+.btn-entregar { background-color: var(--input-bg); color: var(--text-main); grid-column: 1 / -1; }
+.btn-eliminar { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; grid-column: 1 / -1; }
 
 @media (max-width: 600px) { 
     .form-row { flex-direction: column; gap: 0; } 
@@ -112,18 +148,17 @@ input, select, textarea {
 /* --- ESTILOS DE IMPRESIÓN --- */
 @media print {
     body { background-color: white; padding: 0; margin: 0; }
-    .container { display: none !important; }
+    #login-screen, #app-content { display: none !important; }
     
     .ticket-impresion {
         display: block !important;
         font-family: monospace;
-        width: 80mm; /* Formato de impresora térmica POS */
+        width: 80mm;
         margin: 0;
         padding: 10px;
         color: black;
         font-size: 14px;
     }
-
     .boleta-pos h2 { margin: 0; font-size: 18px; text-align: center; }
     .boleta-pos p { margin: 4px 0; }
     .boleta-pos h3 { margin: 10px 0 5px 0; font-size: 15px; border-bottom: 1px dashed black; padding-bottom: 3px; }

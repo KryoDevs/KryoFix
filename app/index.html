@@ -1,79 +1,134 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Servicio Técnico</title>
+    <title>TechFix Tracker Pro</title>
     <link rel="stylesheet" href="estilos.css">
+    <!-- SweetAlert2 para notificaciones bonitas -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🔧 TechFix Tracker</h1>
-            <p>Panel de control para ingreso y diagnóstico de equipos</p>
+
+    <!-- PANTALLA DE LOGIN -->
+    <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <h2>🔧 TechFix Tracker</h2>
+            <p>Acceso exclusivo para técnicos</p>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Correo electrónico" required>
+                <input type="password" id="login-password" placeholder="Contraseña" required>
+                <button type="submit" class="btn-guardar">Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APLICACIÓN PRINCIPAL (Oculta hasta iniciar sesión) -->
+    <div id="app-content" class="container" style="display: none;">
+        
+        <!-- Header / Topbar -->
+        <header class="topbar">
+            <div class="logo-area">
+                <h1>🔧 TechFix Tracker Pro</h1>
+            </div>
+            <div class="user-actions">
+                <button id="btn-theme" class="btn-icon">🌙 Modo Oscuro</button>
+                <button id="btn-logout" class="btn-icon btn-outline-danger">🚪 Salir</button>
+            </div>
         </header>
+
+        <!-- Dashboard Estadísticas -->
+        <div class="dashboard">
+            <div class="stat-card">
+                <h3>Equipos Activos</h3>
+                <h2 id="stat-activos">0</h2>
+            </div>
+            <div class="stat-card">
+                <h3>Reparados (Mes)</h3>
+                <h2 id="stat-reparados">0</h2>
+            </div>
+            <div class="stat-card stat-money">
+                <h3>Ingresos Estimados</h3>
+                <h2 id="stat-ingresos">$0</h2>
+            </div>
+        </div>
 
         <div class="panel-ingreso">
             <h3>📝 Nuevo Ingreso</h3>
-            
-            <div id="alerta-exito" class="alerta-exito">
-                ✅ ¡El equipo se ha ingresado correctamente al taller!
-            </div>
 
             <form id="proyecto-form">
+                <!-- Fila 1: Cliente -->
                 <div class="form-row">
                     <div class="form-group">
                         <label for="cliente">Nombre del Cliente:</label>
                         <input type="text" id="cliente" placeholder="Ej. Juan Pérez" required>
                     </div>
                     <div class="form-group">
-                        <label for="telefono">Teléfono de Contacto:</label>
-                        <input type="tel" id="telefono" placeholder="+56 9 1234 5678" required>
+                        <label for="telefono">Teléfono (WhatsApp):</label>
+                        <input type="tel" id="telefono" placeholder="56912345678" required>
+                        <small>Solo números (con código de país ej: 56 para Chile)</small>
                     </div>
                 </div>
 
+                <!-- Fila 2: Equipo -->
                 <div class="form-row">
                     <div class="form-group">
                         <label for="equipo">Tipo de Equipo:</label>
                         <select id="equipo" required>
-                            <option value="notebook">💻 Notebook</option>
+                            <option value="notebook">💻 Notebook / PC</option>
                             <option value="smartphone">📱 Smartphone</option>
-                            <option value="audio">🔊 Equipo de Audio</option>
+                            <option value="audio">🔊 Audio / TV</option>
+                            <option value="consola">🎮 Consola</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="modelo">Marca y Modelo:</label>
-                        <input type="text" id="modelo" placeholder="Ej. Asus TUF F15, Samsung A33..." required>
+                        <input type="text" id="modelo" placeholder="Ej. iPhone 13 Pro..." required>
+                    </div>
+                </div>
+
+                <!-- Fila 3: Datos Técnicos -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="imei">IMEI / Número de Serie (Opcional):</label>
+                        <input type="text" id="imei" placeholder="Ej. 354890123...">
+                    </div>
+                    <div class="form-group">
+                        <label for="pin">Contraseña / PIN del equipo:</label>
+                        <input type="text" id="pin" placeholder="Ej. 1234 o Patrón Z">
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="accesorios">Accesorios Recibidos (Opcional):</label>
-                    <input type="text" id="accesorios" placeholder="Ej. Cargador de 56Wh, funda negra...">
+                    <label for="accesorios">Condición y Accesorios (Golpes, cargador, etc):</label>
+                    <input type="text" id="accesorios" placeholder="Ej. Pantalla trizada, trae funda y cargador...">
                 </div>
 
                 <div class="form-group">
-                    <label for="falla">Diagnóstico / Trabajo a realizar:</label>
-                    <textarea id="falla" rows="3" placeholder="Ej. Limpieza y cambio de pasta térmica, reemplazo de pantalla..." required></textarea>
+                    <label for="falla">Motivo de ingreso / Falla reportada:</label>
+                    <textarea id="falla" rows="2" placeholder="Ej. No enciende, cambio de batería..." required></textarea>
                 </div>
 
+                <!-- Fila 4: Dinero y Estado -->
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="estado">Estado del Servicio:</label>
+                        <label for="estado">Estado Inicial:</label>
                         <select id="estado" required>
                             <option value="ingresado">📥 Ingresado</option>
                             <option value="revision">🔍 En Revisión</option>
-                            <option value="repuesto">⏳ Esperando Repuesto</option>
-                            <option value="reparado">✅ Listo para Entregar</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="costo">Presupuesto Estimado ($):</label>
-                        <input type="number" id="costo" placeholder="Ej. 35000" required>
+                        <label for="costo">Presupuesto / Costo Total ($):</label>
+                        <input type="number" id="costo" placeholder="0 si aún no hay presupuesto" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="abono">Abono Inicial ($):</label>
+                        <input type="number" id="abono" placeholder="0">
                     </div>
                 </div>
 
-                <button type="submit" class="btn-guardar">💾 Guardar Ficha de Ingreso</button>
+                <button type="submit" class="btn-guardar">💾 Guardar y Generar Ticket</button>
             </form>
         </div>
 
@@ -81,18 +136,20 @@
             <div class="header-registros">
                 <h2>📋 Equipos en Taller</h2>
                 <div class="controles-busqueda">
-                    <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo o falla...">
+                    <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
                     <select id="filtro-estado">
                         <option value="activos">Sólo Activos en Taller</option>
-                        <option value="todos">Ver Historial (Todos)</option>
+                        <option value="todos">Ver Historial Completo</option>
                         <option value="ingresado">📥 Ingresados</option>
                         <option value="revision">🔍 En Revisión</option>
                         <option value="repuesto">⏳ Esperando Repuesto</option>
                         <option value="reparado">✅ Listos para Entregar</option>
-                        <option value="entregado">📦 Entregados (Historial)</option>
+                        <option value="entregado">📦 Entregados</option>
                     </select>
                 </div>
             </div>
+            
+            <div id="loader" class="loader" style="display: none;">Cargando base de datos...</div>
             <div id="lista-proyectos" class="grid-proyectos">
                 <!-- Tarjetas dinámicas -->
             </div>
@@ -100,12 +157,11 @@
     </div>
 
     <!-- Plantilla oculta para impresión -->
-    <div id="ticket-impresion" class="ticket-impresion">
-        <!-- El contenido se generará por JS -->
-    </div>
+    <div id="ticket-impresion" class="ticket-impresion"></div>
 
     <!-- Firebase Compat SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
 
     <script src="app.js"></script>
