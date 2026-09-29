@@ -344,7 +344,7 @@ window.imprimirBoleta = function(id) {
             <h3 class="total" style="font-size:18px;">Saldo Pendiente: ${saldoFormateado}</h3>
             <p>--------------------------------</p>
             <div style="text-align:center; margin: 15px 0;">
-                <img src="${qrUrl}" alt="QR Code" style="width:100px; height:100px;">
+                <img id="qr-impresion" src="${qrUrl}" alt="QR Code" style="width:100px; height:100px;">
                 <p style="font-size: 11px; margin-top:5px;">Escanea para ver el estado en vivo</p>
             </div>
             <p>--------------------------------</p>
@@ -352,7 +352,20 @@ window.imprimirBoleta = function(id) {
             <p class="gracias">¡Gracias por su confianza!</p>
         </div>
     `;
-    window.print();
+
+    // Solución al BUG: Esperar a que el QR cargue desde internet antes de abrir la ventana de impresión
+    const qrImg = document.getElementById('qr-impresion');
+    if (qrImg) {
+        qrImg.onload = () => window.print();
+        qrImg.onerror = () => window.print(); // Si falla el internet, imprimir igual sin QR
+        
+        // Timeout de seguridad por si la API del QR se demora mucho (máx 1.5s)
+        setTimeout(() => {
+            if (!qrImg.complete) window.print();
+        }, 1500);
+    } else {
+        window.print();
+    }
 };
 
 // Eventos de búsqueda
