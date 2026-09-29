@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estado de Reparación - TechFix</title>
+    <!-- Firebase Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .status-container {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            border-top: 5px solid #3b82f6;
+        }
+        .brand {
+            margin-bottom: 20px;
+        }
+        .brand h2 {
+            margin: 0;
+            color: #3b82f6;
+        }
+        .device-info {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+        .device-info h3 { margin: 0 0 5px 0; font-size: 18px; }
+        .device-info p { margin: 0; color: #94a3b8; font-size: 14px; }
+        
+        .timeline {
+            position: relative;
+            max-width: 250px;
+            margin: 0 auto;
+            text-align: left;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            opacity: 0.4;
+            transition: opacity 0.3s;
+        }
+        .step.active {
+            opacity: 1;
+        }
+        .step-icon {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: #334155;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-right: 15px;
+            font-size: 16px;
+            z-index: 2;
+        }
+        .step.active .step-icon {
+            background: #3b82f6;
+            box-shadow: 0 0 15px rgba(59,130,246,0.6);
+        }
+        .step-text {
+            font-weight: bold;
+            font-size: 15px;
+        }
+        
+        .loader {
+            margin: 20px 0;
+            color: #3b82f6;
+            font-weight: bold;
+        }
+        .error-msg {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="status-container">
+        <div class="brand">
+            <h2>🔧 TechFix Tracker</h2>
+            <p style="margin:5px 0 0 0; font-size:14px; color:#94a3b8;">Seguimiento de Reparación</p>
+        </div>
+
+        <div id="loader" class="loader">Buscando tu equipo...</div>
+
+        <div id="content" style="display: none;">
+            <div class="device-info">
+                <h3 id="lbl-modelo">Modelo</h3>
+                <p>Nº de Orden: <span id="lbl-id"></span></p>
+            </div>
+
+            <div class="timeline">
+                <div class="step" id="step-ingresado">
+                    <div class="step-icon">📥</div>
+                    <div class="step-text">Ingresado al taller</div>
+                </div>
+                <div class="step" id="step-revision">
+                    <div class="step-icon">🔍</div>
+                    <div class="step-text">En revisión técnica</div>
+                </div>
+                <div class="step" id="step-repuesto">
+                    <div class="step-icon">⏳</div>
+                    <div class="step-text">Esperando repuestos</div>
+                </div>
+                <div class="step" id="step-reparado">
+                    <div class="step-icon">✅</div>
+                    <div class="step-text">¡Listo para retirar!</div>
+                </div>
+            </div>
+            
+            <p id="msg-reparado" style="display:none; color:#10b981; font-weight:bold; margin-top:20px;">
+                ¡Tu equipo ya está listo! Te esperamos en nuestro local para la entrega.
+            </p>
+        </div>
+
+        <div id="error" class="error-msg" style="display: none;">
+            No se encontró el equipo. Por favor, verifica el código QR.
+        </div>
+        
+        <div class="footer">
+            Sistema de consulta automática
+        </div>
+    </div>
+
+    <script src="status.js"></script>
+</body>
+</html>

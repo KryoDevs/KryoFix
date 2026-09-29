@@ -315,6 +315,8 @@ window.imprimirBoleta = function(id) {
     let htmlExtra = '';
     if (proyecto.imei) htmlExtra += `<p><strong>IMEI/Serie:</strong> ${proyecto.imei}</p>`;
 
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://techfix-tracker-9a128.web.app/status.html?id=${proyecto.id}`;
+
     ticketImpresion.innerHTML = `
         <div class="boleta-pos">
             <img src="logo.jpg" alt="Logo" style="width:60px; display:block; margin: 0 auto 10px auto; border-radius:12px;">
@@ -340,6 +342,11 @@ window.imprimirBoleta = function(id) {
             <h3 class="total">Costo Total: ${costoFormateado}</h3>
             <p style="text-align:right;">Abono Inicial: ${abonoFormateado}</p>
             <h3 class="total" style="font-size:18px;">Saldo Pendiente: ${saldoFormateado}</h3>
+            <p>--------------------------------</p>
+            <div style="text-align:center; margin: 15px 0;">
+                <img src="${qrUrl}" alt="QR Code" style="width:100px; height:100px;">
+                <p style="font-size: 11px; margin-top:5px;">Escanea para ver el estado en vivo</p>
+            </div>
             <p>--------------------------------</p>
             <p class="nota">Presente este ticket para retirar su equipo.</p>
             <p class="gracias">¡Gracias por su confianza!</p>
