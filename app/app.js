@@ -13,6 +13,11 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
+// Activar persistencia offline (soporte sin internet)
+db.enablePersistence().catch(function(err) {
+    console.error("Error activando modo offline:", err.code);
+});
+
 // Referencias al DOM (App)
 const loginScreen = document.getElementById('login-screen');
 const appContent = document.getElementById('app-content');
@@ -86,7 +91,14 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 btnLogout.addEventListener('click', () => {
-    auth.signOut();
+    auth.signOut().then(() => {
+        // Limpiar memoria al salir
+        proyectos = [];
+        listaProyectos.innerHTML = '';
+        statActivos.textContent = '0';
+        statReparados.textContent = '0';
+        statIngresos.textContent = '$0';
+    });
 });
 
 
@@ -95,7 +107,8 @@ btnLogout.addEventListener('click', () => {
 // ========================
 function cargarDatos() {
     loader.style.display = 'block';
-    unsubscribeDB = db.collection('equipos').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+    // Límite de 500 registros para evitar colapso de memoria y altos costos de lectura
+    unsubscribeDB = db.collection('equipos').orderBy('timestamp', 'desc').limit(500).onSnapshot((snapshot) => {
         proyectos = [];
         snapshot.forEach((doc) => {
             proyectos.push({ id: doc.id, ...doc.data() });
