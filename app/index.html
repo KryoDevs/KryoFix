@@ -78,11 +78,35 @@
         </div>
 
         <div class="panel-registros">
-            <h2>📋 Equipos en Taller</h2>
-            <div id="lista-proyectos" class="grid-proyectos">
+            <div class="header-registros">
+                <h2>📋 Equipos en Taller</h2>
+                <div class="controles-busqueda">
+                    <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo o falla...">
+                    <select id="filtro-estado">
+                        <option value="activos">Sólo Activos en Taller</option>
+                        <option value="todos">Ver Historial (Todos)</option>
+                        <option value="ingresado">📥 Ingresados</option>
+                        <option value="revision">🔍 En Revisión</option>
+                        <option value="repuesto">⏳ Esperando Repuesto</option>
+                        <option value="reparado">✅ Listos para Entregar</option>
+                        <option value="entregado">📦 Entregados (Historial)</option>
+                    </select>
                 </div>
+            </div>
+            <div id="lista-proyectos" class="grid-proyectos">
+                <!-- Tarjetas dinámicas -->
+            </div>
         </div>
     </div>
+
+    <!-- Plantilla oculta para impresión -->
+    <div id="ticket-impresion" class="ticket-impresion">
+        <!-- El contenido se generará por JS -->
+    </div>
+
+    <!-- Firebase Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
 
     <script src="app.js"></script>
 </body>

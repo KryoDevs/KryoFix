@@ -42,34 +42,91 @@ input, select, textarea {
 }
 .btn-guardar:hover { background-color: #1d4ed8; }
 
+/* Registros Header y Filtros */
+.header-registros {
+    display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;
+    border-bottom: 2px solid #f1f5f9; padding-bottom: 15px;
+}
+.header-registros h2 { margin: 0; }
+.controles-busqueda {
+    display: flex; gap: 10px;
+}
+#buscador { flex: 2; }
+#filtro-estado { flex: 1; }
+.sin-resultados { text-align: center; color: #64748b; font-style: italic; grid-column: 1 / -1; }
+
 .grid-proyectos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
 
 .tarjeta {
     background: #fff; border: 1px solid #e2e8f0; border-left: 6px solid #cbd5e1;
     padding: 16px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    display: flex; flex-direction: column;
 }
+.tarjeta.entregado-style { opacity: 0.7; filter: grayscale(0.5); }
 
 .tarjeta.notebook { border-left-color: #3b82f6; } 
 .tarjeta.smartphone { border-left-color: #10b981; } 
 .tarjeta.audio { border-left-color: #f59e0b; } 
 
-.tarjeta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.tarjeta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .tarjeta h4 { margin: 0; font-size: 18px; color: #0f172a; }
 .fecha { font-size: 12px; color: #64748b; }
 .tarjeta p { margin: 6px 0; font-size: 14px; color: #334155; }
 
-.badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 8px; }
-.badge.ingresado { background-color: #e2e8f0; color: #475569; }
-.badge.revision { background-color: #fef08a; color: #854d0e; }
-.badge.repuesto { background-color: #fecdd3; color: #be123c; }
-.badge.reparado { background-color: #bbf7d0; color: #166534; }
-
-.precio { font-weight: bold; color: #059669; font-size: 16px; margin-top: 10px !important; }
-
-.btn-entregar {
-    background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
-    width: 100%; margin-top: 15px; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold;
+/* Select de Estado */
+.tarjeta-estado { margin-bottom: 10px; }
+.select-estado {
+    padding: 4px 8px; font-weight: bold; border-radius: 6px; font-size: 13px;
+    border: 1px solid #cbd5e1; cursor: pointer; width: 100%;
 }
-.btn-entregar:hover { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.select-estado.ingresado { background-color: #e2e8f0; color: #475569; }
+.select-estado.revision { background-color: #fef08a; color: #854d0e; }
+.select-estado.repuesto { background-color: #fecdd3; color: #be123c; }
+.select-estado.reparado { background-color: #bbf7d0; color: #166534; }
+.select-estado.entregado { background-color: #cbd5e1; color: #334155; }
 
-@media (max-width: 600px) { .form-row { flex-direction: column; gap: 0; } }
+.precio { font-weight: bold; color: #059669; font-size: 16px; margin-top: auto !important; margin-bottom: 15px !important;}
+
+/* Acciones de la Tarjeta */
+.acciones-tarjeta { display: flex; gap: 8px; margin-top: auto; }
+.btn-imprimir, .btn-entregar, .btn-eliminar {
+    flex: 1; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; border: 1px solid #cbd5e1;
+}
+.btn-imprimir { background-color: #f8fafc; color: #334155; }
+.btn-imprimir:hover { background-color: #f1f5f9; }
+
+.btn-entregar { background-color: #f1f5f9; color: #475569; }
+.btn-entregar:hover { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+
+.btn-eliminar { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.btn-eliminar:hover { background-color: #f87171; color: white; }
+
+/* Plantilla Oculta */
+.ticket-impresion { display: none; }
+
+@media (max-width: 600px) { 
+    .form-row { flex-direction: column; gap: 0; } 
+    .controles-busqueda { flex-direction: column; }
+}
+
+/* --- ESTILOS DE IMPRESIÓN --- */
+@media print {
+    body { background-color: white; padding: 0; margin: 0; }
+    .container { display: none !important; }
+    
+    .ticket-impresion {
+        display: block !important;
+        font-family: monospace;
+        width: 80mm; /* Formato de impresora térmica POS */
+        margin: 0;
+        padding: 10px;
+        color: black;
+        font-size: 14px;
+    }
+
+    .boleta-pos h2 { margin: 0; font-size: 18px; text-align: center; }
+    .boleta-pos p { margin: 4px 0; }
+    .boleta-pos h3 { margin: 10px 0 5px 0; font-size: 15px; border-bottom: 1px dashed black; padding-bottom: 3px; }
+    .boleta-pos .total { font-size: 16px; text-align: right; margin-top: 10px; }
+    .boleta-pos .nota, .boleta-pos .gracias { text-align: center; font-size: 12px; margin-top: 15px; }
+}
