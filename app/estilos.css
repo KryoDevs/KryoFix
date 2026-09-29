@@ -213,6 +213,9 @@ input, select, textarea {
     .controles-busqueda { flex-direction: column; }
 }
 
+/* Ocultar el ticket en la pantalla normal */
+.ticket-impresion { display: none; }
+
 /* --- ESTILOS DE IMPRESIÓN --- */
 @media print {
     body { background-color: white; padding: 0; margin: 0; }
