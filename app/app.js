@@ -317,7 +317,8 @@ window.imprimirBoleta = function(id) {
 
     ticketImpresion.innerHTML = `
         <div class="boleta-pos">
-            <h2>🔧 TechFix Tracker</h2>
+            <img src="logo.jpg" alt="Logo" style="width:60px; display:block; margin: 0 auto 10px auto; border-radius:12px;">
+            <h2>TechFix Tracker</h2>
             <p style="text-align:center;">Servicio Técnico Especializado</p>
             <p>--------------------------------</p>
             <p><strong>Ingreso:</strong> ${proyecto.fecha}</p>

@@ -233,3 +233,7 @@ input, select, textarea {
     .boleta-pos .total { font-size: 16px; text-align: right; margin-top: 10px; }
     .boleta-pos .nota, .boleta-pos .gracias { text-align: center; font-size: 12px; margin-top: 15px; }
 }
+/* Logos */
+.brand-logo-login { width: 80px; height: 80px; border-radius: 20px; margin-bottom: 15px; box-shadow: 0 0 15px rgba(59,130,246,0.5); }
+.logo-area { display: flex; align-items: center; gap: 10px; }
+.brand-logo-topbar { width: 40px; height: 40px; border-radius: 10px; }
