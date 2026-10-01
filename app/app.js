@@ -1,4 +1,6 @@
-// Configuración de Firebase
+// ========================
+// CONFIGURACIÓN DE FIREBASE
+// ========================
 const firebaseConfig = {
     apiKey: "AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8",
     authDomain: "techfix-tracker-9a128.firebaseapp.com",
@@ -12,18 +14,22 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+const storage = firebase.storage(); // FIX: Firebase Storage para firmas
 
 // Activar persistencia offline (soporte sin internet)
 db.enablePersistence().catch(function(err) {
     console.error("Error activando modo offline:", err.code);
 });
 
-// Referencias al DOM (App)
+// ========================
+// REFERENCIAS AL DOM
+// ========================
 const loginScreen = document.getElementById('login-screen');
 const appContent = document.getElementById('app-content');
 const loginForm = document.getElementById('login-form');
 const btnLogout = document.getElementById('btn-logout');
 const btnTheme = document.getElementById('btn-theme');
+const userEmailDisplay = document.getElementById('user-email-display');
 
 const form = document.getElementById('proyecto-form');
 const listaProyectos = document.getElementById('lista-proyectos');
@@ -39,6 +45,17 @@ const statIngresos = document.getElementById('stat-ingresos');
 
 let proyectos = [];
 let unsubscribeDB = null;
+let currentUser = null; // MULTI-TÉCNICO: referencia al usuario logueado
+
+// ========================
+// FIX SEGURIDAD: Escapar HTML para prevenir XSS
+// ========================
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(text)));
+    return div.innerHTML;
+}
 
 // ========================
 // 1. TEMA Y MODO OSCURO
@@ -61,20 +78,21 @@ btnTheme.addEventListener('click', () => {
 // ========================
 auth.onAuthStateChanged(user => {
     if (user) {
-        // Usuario Logueado
+        currentUser = user; // MULTI-TÉCNICO: guardar referencia
         loginScreen.style.display = 'none';
         appContent.style.display = 'block';
+        // Mostrar email del técnico logueado
+        if (userEmailDisplay) userEmailDisplay.textContent = user.email;
         cargarDatos();
-        
         Swal.fire({
             toast: true, position: 'top-end', icon: 'success',
             title: `¡Bienvenido!`, showConfirmButton: false, timer: 2000
         });
     } else {
-        // No logueado
+        currentUser = null;
         loginScreen.style.display = 'flex';
         appContent.style.display = 'none';
-        if (unsubscribeDB) unsubscribeDB(); // Detener lectura de BD si sale
+        if (unsubscribeDB) unsubscribeDB();
     }
 });
 
@@ -82,11 +100,15 @@ loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const pass = document.getElementById('login-password').value;
-    
+    const btn = loginForm.querySelector('button[type="submit"]');
+    btn.textContent = 'Ingresando...';
+    btn.disabled = true;
     try {
         await auth.signInWithEmailAndPassword(email, pass);
     } catch (error) {
         Swal.fire('Error de Acceso', 'Credenciales incorrectas o usuario no existe.', 'error');
+        btn.textContent = 'Ingresar al Sistema';
+        btn.disabled = false;
     }
 });
 
@@ -94,6 +116,7 @@ btnLogout.addEventListener('click', () => {
     auth.signOut().then(() => {
         // Limpiar memoria al salir
         proyectos = [];
+        currentUser = null;
         listaProyectos.innerHTML = '';
         statActivos.textContent = '0';
         statReparados.textContent = '0';
@@ -106,40 +129,61 @@ btnLogout.addEventListener('click', () => {
 // 3. BASE DE DATOS Y RENDER
 // ========================
 function cargarDatos() {
+    if (!currentUser) return;
     loader.style.display = 'block';
-    // Límite de 500 registros para evitar colapso de memoria y altos costos de lectura
-    unsubscribeDB = db.collection('equipos').orderBy('timestamp', 'desc').limit(500).onSnapshot((snapshot) => {
-        proyectos = [];
-        snapshot.forEach((doc) => {
-            proyectos.push({ id: doc.id, ...doc.data() });
+
+    // MULTI-TÉCNICO: Filtrar por uid del técnico logueado + límite de 500
+    unsubscribeDB = db.collection('equipos')
+        .where('uid', '==', currentUser.uid)
+        .orderBy('timestamp', 'desc')
+        .limit(500)
+        .onSnapshot((snapshot) => {
+            proyectos = [];
+            snapshot.forEach((doc) => {
+                proyectos.push({ id: doc.id, ...doc.data() });
+            });
+            loader.style.display = 'none';
+            renderizarProyectos();
+            actualizarDashboard();
+        }, (error) => {
+            console.error(error);
+            loader.style.display = 'none';
+            Swal.fire('Error', 'No tienes permisos para ver la base de datos.', 'error');
         });
-        loader.style.display = 'none';
-        renderizarProyectos();
-        actualizarDashboard();
-    }, (error) => {
-        console.error(error);
-        Swal.fire('Error', 'No tienes permisos para ver la base de datos.', 'error');
-    });
 }
 
 function actualizarDashboard() {
     const activos = proyectos.filter(p => p.estado !== 'entregado').length;
-    
-    const mesActual = new Date().getMonth();
-    const reparadosEsteMes = proyectos.filter(p => p.estado === 'reparado' && new Date(p.timestamp).getMonth() === mesActual).length;
-    
-    // Sumamos los presupuestos de los reparados y entregados para estimar ingresos
-    const ingresos = proyectos.filter(p => p.estado === 'reparado' || p.estado === 'entregado')
-                              .reduce((acc, p) => acc + (p.costo || 0), 0);
+
+    // FIX: Filtrar ingresos SOLO del mes y año actual
+    const ahora = new Date();
+    const mesActual = ahora.getMonth();
+    const anioActual = ahora.getFullYear();
+
+    const reparadosEsteMes = proyectos.filter(p => {
+        const fecha = new Date(p.timestamp);
+        return p.estado === 'reparado' &&
+               fecha.getMonth() === mesActual &&
+               fecha.getFullYear() === anioActual;
+    }).length;
+
+    const ingresosEsteMes = proyectos
+        .filter(p => {
+            const fecha = new Date(p.timestamp);
+            return (p.estado === 'reparado' || p.estado === 'entregado') &&
+                   fecha.getMonth() === mesActual &&
+                   fecha.getFullYear() === anioActual;
+        })
+        .reduce((acc, p) => acc + (p.costo || 0), 0);
 
     statActivos.textContent = activos;
     statReparados.textContent = reparadosEsteMes;
-    statIngresos.textContent = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(ingresos);
+    statIngresos.textContent = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(ingresosEsteMes);
 }
 
 function renderizarProyectos() {
-    listaProyectos.innerHTML = ''; 
-    
+    listaProyectos.innerHTML = '';
+
     const textoBusqueda = buscador.value.toLowerCase();
     const estadoFiltro = filtroEstado.value;
 
@@ -149,6 +193,7 @@ function renderizarProyectos() {
         else if (estadoFiltro === 'activos') cumpleEstado = proyecto.estado !== 'entregado';
         else cumpleEstado = proyecto.estado === estadoFiltro;
 
+        // FIX XSS: Buscamos en los datos RAW, no en el HTML escapado
         const textoProyecto = `${proyecto.cliente} ${proyecto.modelo} ${proyecto.falla} ${proyecto.telefono} ${proyecto.imei || ''}`.toLowerCase();
         const cumpleBusqueda = textoProyecto.includes(textoBusqueda);
 
@@ -157,20 +202,29 @@ function renderizarProyectos() {
 
     proyectosFiltrados.forEach(proyecto => {
         const tarjeta = document.createElement('div');
-        tarjeta.className = `tarjeta ${proyecto.equipo} ${proyecto.estado === 'entregado' ? 'entregado-style' : ''}`;
-        
+        tarjeta.className = `tarjeta ${escapeHtml(proyecto.equipo)} ${proyecto.estado === 'entregado' ? 'entregado-style' : ''}`;
+
         const costoFormateado = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(proyecto.costo || 0);
         const abonoFormateado = proyecto.abono ? new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(proyecto.abono) : '$0';
-        
+
+        // FIX XSS: Escapar todos los campos del usuario antes de insertarlos
+        const clienteSeguro   = escapeHtml(proyecto.cliente);
+        const telefonoSeguro  = escapeHtml(proyecto.telefono);
+        const modeloSeguro    = escapeHtml(proyecto.modelo);
+        const fallaSegura     = escapeHtml(proyecto.falla);
+        const accesoriosSeguro = escapeHtml(proyecto.accesorios);
+        const imeiSeguro      = escapeHtml(proyecto.imei);
+
         const infoExtra = [];
-        if (proyecto.imei) infoExtra.push(`IMEI/Serie: ${proyecto.imei}`);
-        if (proyecto.pin) infoExtra.push(`PIN/Patrón: ${proyecto.pin}`);
+        if (proyecto.imei) infoExtra.push(`IMEI/Serie: ${imeiSeguro}`);
+        // FIX SEGURIDAD: Mostrar PIN como asteriscos, nunca en texto plano
+        if (proyecto.pin) infoExtra.push(`PIN: ${'*'.repeat(proyecto.pin.length)}`);
         const htmlExtra = infoExtra.length > 0 ? `<span class="detalle-extra">🔑 ${infoExtra.join(' | ')}</span>` : '';
 
         tarjeta.innerHTML = `
             <div class="tarjeta-header">
-                <h4>${proyecto.modelo}</h4>
-                <span class="fecha">${proyecto.fecha}</span>
+                <h4>${modeloSeguro}</h4>
+                <span class="fecha">${escapeHtml(proyecto.fecha)}</span>
             </div>
             
             <div class="tarjeta-estado">
@@ -183,25 +237,25 @@ function renderizarProyectos() {
                 </select>
             </div>
 
-            <p><strong>👤 Cliente:</strong> ${proyecto.cliente} (${proyecto.telefono})</p>
+            <p><strong>👤 Cliente:</strong> ${clienteSeguro} (${telefonoSeguro})</p>
             ${htmlExtra}
-            <p><strong>🎒 Accesorios:</strong> ${proyecto.accesorios || 'Ninguno'}</p>
-            <p><strong>🛠️ Falla:</strong> ${proyecto.falla}</p>
+            <p><strong>🎒 Accesorios:</strong> ${accesoriosSeguro || 'Ninguno'}</p>
+            <p><strong>🛠️ Falla:</strong> ${fallaSegura}</p>
             
             <p class="precio">
                 💰 Costo: ${costoFormateado} 
                 <br><span style="font-size:12px; color:var(--text-muted);">Abonado: ${abonoFormateado}</span>
             </p>
             
-            ${proyecto.firmaCliente ? `<div style="text-align:center; margin-top:10px;"><img src="${proyecto.firmaCliente}" class="firma-guardada" alt="Firma del cliente"><p style="font-size:12px; color:var(--text-muted); margin:0;">Firma de Conformidad</p></div>` : ''}
+            ${proyecto.firmaCliente ? `<div style="text-align:center; margin-top:10px;"><img src="${escapeHtml(proyecto.firmaCliente)}" class="firma-guardada" alt="Firma del cliente"><p style="font-size:12px; color:var(--text-muted); margin:0;">✅ Firma de Conformidad</p></div>` : ''}
 
             <div class="acciones-tarjeta">
                 <button class="btn-accion btn-imprimir" onclick="imprimirBoleta('${proyecto.id}')">🖨️ Ticket</button>
-                <button class="btn-accion btn-wsp" onclick="enviarWhatsApp('${proyecto.telefono}', '${proyecto.cliente}', '${proyecto.modelo}', '${proyecto.estado}', ${proyecto.costo})">💬 WhatsApp</button>
+                <button class="btn-accion btn-wsp" onclick="enviarWhatsApp('${proyecto.id}')">💬 WhatsApp</button>
                 
-                ${proyecto.estado !== 'entregado' 
+                ${proyecto.estado !== 'entregado'
                     ? `<button class="btn-accion btn-entregar" onclick="archivarProyecto('${proyecto.id}')">📦 Marcar Entregado</button>`
-                    : `<button class="btn-accion btn-eliminar" onclick="eliminarProyectoPermanente('${proyecto.id}')">🗑️ Eliminar BD</button>`
+                    : `<button class="btn-accion btn-eliminar" onclick="eliminarProyectoPermanente('${proyecto.id}')">🗑️ Eliminar</button>`
                 }
             </div>
         `;
@@ -218,9 +272,15 @@ function renderizarProyectos() {
 // 4. NUEVO INGRESO
 // ========================
 form.addEventListener('submit', async function(e) {
-    e.preventDefault(); 
+    e.preventDefault();
+
+    if (!currentUser) {
+        Swal.fire('Error', 'Debes iniciar sesión primero.', 'error');
+        return;
+    }
 
     const nuevoProyecto = {
+        uid: currentUser.uid, // MULTI-TÉCNICO: asociar equipo al técnico
         cliente: document.getElementById('cliente').value,
         telefono: document.getElementById('telefono').value,
         equipo: document.getElementById('equipo').value,
@@ -238,10 +298,10 @@ form.addEventListener('submit', async function(e) {
 
     try {
         await db.collection('equipos').add(nuevoProyecto);
-        form.reset(); 
-        
+        form.reset();
+
         if(filtroEstado.value === 'entregado') filtroEstado.value = 'activos';
-        
+
         Swal.fire({
             toast: true, position: 'top-end', icon: 'success',
             title: 'Equipo guardado correctamente', showConfirmButton: false, timer: 3000
@@ -255,7 +315,7 @@ form.addEventListener('submit', async function(e) {
 
 
 // ========================
-// 5. ACCIONES (Ventana global)
+// 5. ACCIONES
 // ========================
 window.cambiarEstado = async function(id, nuevoEstado) {
     try {
@@ -268,7 +328,7 @@ window.cambiarEstado = async function(id, nuevoEstado) {
 
 window.archivarProyecto = function(id) {
     currentFirmaId = id;
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar canvas previo
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#000';
@@ -283,7 +343,8 @@ window.eliminarProyectoPermanente = async function(id) {
         showCancelButton: true,
         confirmButtonColor: '#d33',
         cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Sí, borrar'
+        confirmButtonText: 'Sí, borrar',
+        cancelButtonText: 'Cancelar'
     }).then(async (result) => {
         if (result.isConfirmed) {
             try {
@@ -296,19 +357,20 @@ window.eliminarProyectoPermanente = async function(id) {
     });
 };
 
-window.enviarWhatsApp = function(telefono, cliente, modelo, estado, costo) {
-    // Limpiar el teléfono de espacios o símbolos
-    const numLimpio = telefono.replace(/\D/g, '');
-    let mensaje = `Hola ${cliente}, te escribo de TechFix. `;
-    
-    if (estado === 'reparado') {
-        mensaje += `Te informamos que tu ${modelo} ya está REPARADO y listo para ser retirado. El costo total es de $${costo}.`;
-    } else if (estado === 'repuesto') {
-        mensaje += `Queríamos avisarte que estamos esperando un repuesto para tu ${modelo}. Te mantendremos informado.`;
-    } else {
-        mensaje += `Queríamos comunicarnos contigo respecto a tu ${modelo}.`;
-    }
+// FIX: Pasamos el id del proyecto para obtener datos frescos sin inyección
+window.enviarWhatsApp = function(id) {
+    const proyecto = proyectos.find(p => p.id === id);
+    if (!proyecto) return;
+    const numLimpio = proyecto.telefono.replace(/\D/g, '');
+    let mensaje = `Hola ${proyecto.cliente}, te escribo de TechFix. `;
 
+    if (proyecto.estado === 'reparado') {
+        mensaje += `Te informamos que tu ${proyecto.modelo} ya está REPARADO y listo para ser retirado. El costo total es de ${new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(proyecto.costo)}.`;
+    } else if (proyecto.estado === 'repuesto') {
+        mensaje += `Queríamos avisarte que estamos esperando un repuesto para tu ${proyecto.modelo}. Te mantendremos informado.`;
+    } else {
+        mensaje += `Queríamos comunicarnos contigo respecto a tu ${proyecto.modelo}.`;
+    }
     const url = `https://wa.me/${numLimpio}?text=${encodeURIComponent(mensaje)}`;
     window.open(url, '_blank');
 };
@@ -322,8 +384,9 @@ window.imprimirBoleta = function(id) {
     const saldoPendiente = (proyecto.costo || 0) - (proyecto.abono || 0);
     const saldoFormateado = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(saldoPendiente > 0 ? saldoPendiente : 0);
 
+    // FIX XSS: Usar escapeHtml en todos los campos del ticket
     let htmlExtra = '';
-    if (proyecto.imei) htmlExtra += `<p><strong>IMEI/Serie:</strong> ${proyecto.imei}</p>`;
+    if (proyecto.imei) htmlExtra += `<p><strong>IMEI/Serie:</strong> ${escapeHtml(proyecto.imei)}</p>`;
 
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://techfix-tracker-9a128.web.app/status.html?id=${proyecto.id}`;
 
@@ -333,21 +396,21 @@ window.imprimirBoleta = function(id) {
             <h2>TechFix Tracker</h2>
             <p style="text-align:center;">Servicio Técnico Especializado</p>
             <p>--------------------------------</p>
-            <p><strong>Ingreso:</strong> ${proyecto.fecha}</p>
+            <p><strong>Ingreso:</strong> ${escapeHtml(proyecto.fecha)}</p>
             <p><strong>Ticket ID:</strong> #${proyecto.id.toString().slice(-6).toUpperCase()}</p>
             <p>--------------------------------</p>
             <h3>Datos del Cliente</h3>
-            <p><strong>Nombre:</strong> ${proyecto.cliente}</p>
-            <p><strong>Teléfono:</strong> ${proyecto.telefono}</p>
+            <p><strong>Nombre:</strong> ${escapeHtml(proyecto.cliente)}</p>
+            <p><strong>Teléfono:</strong> ${escapeHtml(proyecto.telefono)}</p>
             <p>--------------------------------</p>
             <h3>Detalle del Equipo</h3>
-            <p><strong>Equipo:</strong> ${proyecto.equipo.toUpperCase()}</p>
-            <p><strong>Modelo:</strong> ${proyecto.modelo}</p>
+            <p><strong>Equipo:</strong> ${escapeHtml(proyecto.equipo).toUpperCase()}</p>
+            <p><strong>Modelo:</strong> ${escapeHtml(proyecto.modelo)}</p>
             ${htmlExtra}
-            <p><strong>Condición:</strong> ${proyecto.accesorios || 'Ninguna descrita'}</p>
+            <p><strong>Condición:</strong> ${escapeHtml(proyecto.accesorios) || 'Ninguna descrita'}</p>
             <p>--------------------------------</p>
             <h3>Trabajo Solicitado</h3>
-            <p>${proyecto.falla}</p>
+            <p>${escapeHtml(proyecto.falla)}</p>
             <p>--------------------------------</p>
             <h3 class="total">Costo Total: ${costoFormateado}</h3>
             <p style="text-align:right;">Abono Inicial: ${abonoFormateado}</p>
@@ -363,16 +426,11 @@ window.imprimirBoleta = function(id) {
         </div>
     `;
 
-    // Solución al BUG: Esperar a que el QR cargue desde internet antes de abrir la ventana de impresión
     const qrImg = document.getElementById('qr-impresion');
     if (qrImg) {
         qrImg.onload = () => window.print();
-        qrImg.onerror = () => window.print(); // Si falla el internet, imprimir igual sin QR
-        
-        // Timeout de seguridad por si la API del QR se demora mucho (máx 1.5s)
-        setTimeout(() => {
-            if (!qrImg.complete) window.print();
-        }, 1500);
+        qrImg.onerror = () => window.print();
+        setTimeout(() => { if (!qrImg.complete) window.print(); }, 1500);
     } else {
         window.print();
     }
@@ -393,9 +451,14 @@ const modalFirma = document.getElementById('modal-firma');
 
 function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+    };
 }
 
 function startDrawing(e) {
@@ -414,16 +477,12 @@ function draw(e) {
     e.preventDefault();
 }
 
-function stopDrawing() {
-    isDrawing = false;
-}
+function stopDrawing() { isDrawing = false; }
 
-// Mouse events
 canvas.addEventListener('mousedown', startDrawing);
 canvas.addEventListener('mousemove', draw);
 canvas.addEventListener('mouseup', stopDrawing);
 canvas.addEventListener('mouseout', stopDrawing);
-// Touch events
 canvas.addEventListener('touchstart', startDrawing, {passive: false});
 canvas.addEventListener('touchmove', draw, {passive: false});
 canvas.addEventListener('touchend', stopDrawing);
@@ -436,15 +495,33 @@ document.getElementById('btn-cancelar-firma').addEventListener('click', () => {
     modalFirma.style.display = 'none';
 });
 
-document.getElementById('btn-guardar-firma').addEventListener('click', () => {
-    const dataUrl = canvas.toDataURL('image/png');
-    db.collection('equipos').doc(currentFirmaId).update({
-        estado: 'entregado',
-        firmaCliente: dataUrl
-    }).then(() => {
-        modalFirma.style.display = 'none';
-        Swal.fire('Entregado!', 'El equipo fue entregado con la firma del cliente.', 'success');
-    }).catch(error => {
-        Swal.fire('Error', 'No se pudo guardar.', 'error');
-    });
+// FIX: Subir firma a Firebase Storage (no a Firestore como base64)
+document.getElementById('btn-guardar-firma').addEventListener('click', async () => {
+    const btnGuardar = document.getElementById('btn-guardar-firma');
+    btnGuardar.textContent = 'Guardando...';
+    btnGuardar.disabled = true;
+
+    try {
+        // Convertir canvas a Blob (binario, no base64)
+        canvas.toBlob(async (blob) => {
+            const storageRef = storage.ref(`firmas/${currentFirmaId}_${Date.now()}.png`);
+            const snapshot = await storageRef.put(blob);
+            const downloadURL = await snapshot.ref.getDownloadURL();
+
+            // Guardar solo la URL (liviana) en Firestore, no la imagen
+            await db.collection('equipos').doc(currentFirmaId).update({
+                estado: 'entregado',
+                firmaCliente: downloadURL // URL en lugar de base64
+            });
+
+            modalFirma.style.display = 'none';
+            Swal.fire('¡Entregado!', 'El equipo fue entregado con la firma del cliente guardada en la nube.', 'success');
+        }, 'image/png');
+    } catch (error) {
+        console.error(error);
+        Swal.fire('Error', 'No se pudo guardar la firma. Revisa tu conexión.', 'error');
+    } finally {
+        btnGuardar.textContent = 'Guardar y Entregar';
+        btnGuardar.disabled = false;
+    }
 });

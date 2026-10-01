@@ -123,6 +123,8 @@ body {
 .btn-icon:hover { background: var(--input-bg); }
 .btn-outline-danger { color: #dc2626; border-color: #fca5a5; }
 .btn-outline-danger:hover { background: #fee2e2; }
+.user-email { font-size: 13px; color: var(--text-muted); align-self: center; display: none; }
+@media (min-width: 600px) { .user-email { display: block; } }
 
 /* Dashboard */
 .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
