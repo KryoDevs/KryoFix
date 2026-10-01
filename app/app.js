@@ -339,12 +339,12 @@ form.addEventListener('submit', async function(e) {
         uid: currentUser.uid,
         cliente: document.getElementById('cliente').value,
         telefono: document.getElementById('telefono').value,
-        equipo: document.getElementById('equipo').value,
+        equipo: document.getElementById('marca').value,
         modelo: document.getElementById('modelo').value,
         imei: document.getElementById('imei').value || '',
         pin: document.getElementById('pin').value || '',
         accesorios: document.getElementById('accesorios').value,
-        falla: document.getElementById('falla').value,
+        falla: (document.getElementById('tipo-reparacion').options[document.getElementById('tipo-reparacion').selectedIndex]?.text || '') + ' - ' + document.getElementById('falla').value,
         estado: document.getElementById('estado').value,
         costo: Number(document.getElementById('costo').value),
         abono: Number(document.getElementById('abono').value || 0),
@@ -606,4 +606,136 @@ if ('serviceWorker' in navigator) {
         });
     });
 }
+
+
+// ========================
+// 8. NAVEGACION TALLER / CATALOGO
+// ========================
+document.getElementById('btn-nav-taller').addEventListener('click', () => {
+    document.getElementById('vista-taller').style.display = 'block';
+    document.getElementById('vista-catalogo').style.display = 'none';
+});
+
+document.getElementById('btn-nav-catalogo').addEventListener('click', () => {
+    document.getElementById('vista-taller').style.display = 'none';
+    document.getElementById('vista-catalogo').style.display = 'block';
+    cargarCatalogo();
+});
+
+
+// ========================
+// 9. LOGICA DE CATALOGO INTELIGENTE
+// ========================
+let catalogoDB = [];
+
+async function cargarCatalogo() {
+    if (!currentUser) return;
+    db.collection('catalogo').where('uid', '==', currentUser.uid).onSnapshot(snapshot => {
+        catalogoDB = [];
+        document.getElementById('lista-catalogo').innerHTML = '';
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            catalogoDB.push(data);
+            // Renderizar tarjeta
+            document.getElementById('lista-catalogo').innerHTML += \`n            <div class="tarjeta-proyecto"> 
+                <h3 style="margin:0; color:var(--primary);">\ \</h3>
+                <p style="margin-top:5px;"><strong>Reparación:</strong> \</p>
+                <p class="precio" style="margin-bottom:0;">?? Precio: \$\</p>
+                <div style="margin-top:10px; text-align:right;">
+                    <button class="btn-icon btn-outline-danger" onclick="eliminarCatalogo('\')">??? Eliminar</button>
+                </div>
+            </div>\;
+        });
+        // Actualizar formulario de ingreso
+        actualizarOpcionesIngreso();
+    });
+}
+
+window.eliminarCatalogo = async function(id) {
+    if(confirm('¿Eliminar este precio?')) {
+        await db.collection('catalogo').doc(id).delete();
+    }
+};
+
+document.getElementById('catalogo-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    const nuevo = {
+        uid: currentUser.uid,
+        marca: document.getElementById('cat-marca').value,
+        modelo: document.getElementById('cat-modelo').value,
+        reparacion: document.getElementById('cat-reparacion').value,
+        precio: Number(document.getElementById('cat-precio').value)
+    };
+    await db.collection('catalogo').add(nuevo);
+    document.getElementById('catalogo-form').reset();
+    Swal.fire({toast: true, position: 'top-end', icon: 'success', title: 'Precio guardado', showConfirmButton: false, timer: 2000});
+});
+
+
+// LOGICA AUTO-COMPLETADO
+function actualizarOpcionesIngreso() {
+    // No sobreescribir marcas, ya que estan hardcodeadas en HTML, o podriamos añadir dinamicamente.
+}
+
+document.getElementById('marca').addEventListener('change', (e) => {
+    const marcaSeleccionada = e.target.value;
+    const selectModelo = document.getElementById('modelo');
+    selectModelo.innerHTML = '<option value="">-- Selecciona Modelo --</option>';
+    
+    if(marcaSeleccionada === 'Otro') {
+        selectModelo.disabled = false;
+        selectModelo.innerHTML += '<option value="Otro">Escribir Manualmente...</option>';
+        document.getElementById('tipo-reparacion').disabled = false;
+        document.getElementById('tipo-reparacion').innerHTML = '<option value="Otra">Escribir Manualmente...</option>';
+        return;
+    }
+
+    // Buscar modelos unicos para la marca en el catalogo
+    const modelos = [...new Set(catalogoDB.filter(c => c.marca.toLowerCase() === marcaSeleccionada.toLowerCase()).map(c => c.modelo))];
+    
+    if(modelos.length > 0) {
+        selectModelo.disabled = false;
+        modelos.forEach(m => {
+            selectModelo.innerHTML += \<option value="\">\</option>\;
+        });
+    } else {
+        selectModelo.innerHTML = '<option value="">Sin modelos (Carga en catálogo o elige Otro)</option>';
+        selectModelo.disabled = true;
+    }
+    selectModelo.innerHTML += '<option value="Otro">Otro (Fuera de catálogo)</option>';
+    selectModelo.disabled = false;
+});
+
+document.getElementById('modelo').addEventListener('change', (e) => {
+    const modeloSeleccionado = e.target.value;
+    const selectReparacion = document.getElementById('tipo-reparacion');
+    selectReparacion.innerHTML = '<option value="">-- Selecciona Reparación --</option>';
+
+    const reparaciones = catalogoDB.filter(c => c.modelo === modeloSeleccionado);
+    
+    if(reparaciones.length > 0) {
+        selectReparacion.disabled = false;
+        reparaciones.forEach(r => {
+            selectReparacion.innerHTML += \<option value="\">\</option>\;
+        });
+    }
+    selectReparacion.innerHTML += '<option value="Otra">Otra (Escribir precio manual)</option>';
+    selectReparacion.disabled = false;
+});
+
+document.getElementById('tipo-reparacion').addEventListener('change', (e) => {
+    const repId = e.target.value;
+    if(repId && repId !== 'Otra') {
+        const item = catalogoDB.find(c => c.id === repId);
+        if(item) {
+            document.getElementById('costo').value = item.precio;
+        }
+    } else {
+        document.getElementById('costo').value = '';
+    }
+});
+
+
 

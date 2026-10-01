@@ -49,135 +49,192 @@
             </div>
             <div class="user-actions">
                 <span id="user-email-display" class="user-email"></span>
-                <button id="btn-theme" class="btn-icon">🌙 Modo Oscuro</button>
+                <button id="btn-nav-taller" class="btn-icon" style="background: var(--primary); color: white;">🏠 Taller</button>
+                <button id="btn-nav-catalogo" class="btn-icon">📚 Catálogo</button>
+                <button id="btn-theme" class="btn-icon">🌙 Modo</button>
                 <button id="btn-logout" class="btn-icon btn-outline-danger">🚪 Salir</button>
             </div>
         </header>
 
-        <!-- Dashboard Estadísticas -->
-        <div class="dashboard">
-            <div class="stat-card">
-                <h3>Equipos Activos</h3>
-                <h2 id="stat-activos">0</h2>
+        <!-- VISTA: TALLER -->
+        <div id="vista-taller">
+            <!-- Dashboard Estadísticas -->
+            <div class="dashboard">
+                <div class="stat-card">
+                    <h3>Equipos Activos</h3>
+                    <h2 id="stat-activos">0</h2>
+                </div>
+                <div class="stat-card">
+                    <h3>Reparados (Mes)</h3>
+                    <h2 id="stat-reparados">0</h2>
+                </div>
+                <div class="stat-card stat-money">
+                    <h3>Ingresos Estimados</h3>
+                    <h2 id="stat-ingresos">$0</h2>
+                </div>
             </div>
-            <div class="stat-card">
-                <h3>Reparados (Mes)</h3>
-                <h2 id="stat-reparados">0</h2>
+
+            <div class="panel-ingreso">
+                <h3>📝 Nuevo Ingreso Inteligente</h3>
+
+                <form id="proyecto-form">
+                    <!-- Fila 1: Cliente -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cliente">Nombre del Cliente:</label>
+                            <input type="text" id="cliente" placeholder="Ej. Juan Pérez" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="telefono">Teléfono (WhatsApp):</label>
+                            <input type="tel" id="telefono" placeholder="56912345678" required>
+                            <small>Solo números (con código de país ej: 56 para Chile)</small>
+                        </div>
+                    </div>
+
+                    <!-- Fila 2: Equipo con Autocompletado del Catálogo -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="marca">Marca:</label>
+                            <select id="marca" required>
+                                <option value="">-- Selecciona --</option>
+                                <option value="Apple">Apple</option>
+                                <option value="Samsung">Samsung</option>
+                                <option value="Xiaomi">Xiaomi</option>
+                                <option value="Motorola">Motorola</option>
+                                <option value="Huawei">Huawei</option>
+                                <option value="Otro">Otro...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="modelo">Modelo:</label>
+                            <select id="modelo" required disabled>
+                                <option value="">-- Selecciona Marca Primero --</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Fila 3: Datos Técnicos -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="imei">IMEI / Número de Serie (Opcional):</label>
+                            <input type="text" id="imei" placeholder="Ej. 354890123...">
+                        </div>
+                        <div class="form-group">
+                            <label for="pin">Contraseña / PIN del equipo:</label>
+                            <input type="text" id="pin" placeholder="Ej. 1234 o Patrón Z">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="accesorios">Condición y Accesorios (Golpes, cargador, etc):</label>
+                        <input type="text" id="accesorios" placeholder="Ej. Pantalla trizada, trae funda y cargador...">
+                    </div>
+
+                    <!-- Reparación Inteligente -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="tipo-reparacion">Reparación Solicitada:</label>
+                            <select id="tipo-reparacion" required disabled>
+                                <option value="">-- Selecciona Modelo Primero --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="falla">Detalle de falla (Opcional):</label>
+                            <input type="text" id="falla" placeholder="Ej. Se mojó ayer, no carga...">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="foto-evidencia">📷 Fotografías de Evidencia (Opcional):</label>
+                        <input type="file" id="foto-evidencia" accept="image/*" capture="environment" style="background: transparent; border: none; padding: 0;">
+                        <small>Se guardará una copia comprimida para ahorrar espacio.</small>
+                        <div id="preview-foto" style="margin-top: 10px; display: none;">
+                            <img id="img-evidencia-preview" src="" alt="Previsualización" style="max-width: 100%; height: auto; max-height: 150px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        </div>
+                    </div>
+
+                    <!-- Fila 4: Dinero y Estado -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="estado">Estado Inicial:</label>
+                            <select id="estado" required>
+                                <option value="ingresado">📥 Ingresado</option>
+                                <option value="revision">🔍 En Revisión</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="costo">Presupuesto / Costo Total ($):</label>
+                            <input type="number" id="costo" placeholder="0 si aún no hay presupuesto" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="abono">Abono Inicial ($):</label>
+                            <input type="number" id="abono" placeholder="0">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-guardar">💾 Guardar y Generar Ticket</button>
+                </form>
             </div>
-            <div class="stat-card stat-money">
-                <h3>Ingresos Estimados</h3>
-                <h2 id="stat-ingresos">$0</h2>
-            </div>
-        </div>
 
-        <div class="panel-ingreso">
-            <h3>📝 Nuevo Ingreso</h3>
-
-            <form id="proyecto-form">
-                <!-- Fila 1: Cliente -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="cliente">Nombre del Cliente:</label>
-                        <input type="text" id="cliente" placeholder="Ej. Juan Pérez" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="telefono">Teléfono (WhatsApp):</label>
-                        <input type="tel" id="telefono" placeholder="56912345678" required>
-                        <small>Solo números (con código de país ej: 56 para Chile)</small>
-                    </div>
-                </div>
-
-                <!-- Fila 2: Equipo -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="equipo">Tipo de Equipo:</label>
-                        <select id="equipo" required>
-                            <option value="notebook">💻 Notebook / PC</option>
-                            <option value="smartphone">📱 Smartphone</option>
-                            <option value="audio">🔊 Audio / TV</option>
-                            <option value="consola">🎮 Consola</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="modelo">Marca y Modelo:</label>
-                        <input type="text" id="modelo" placeholder="Ej. iPhone 13 Pro..." required>
-                    </div>
-                </div>
-
-                <!-- Fila 3: Datos Técnicos -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="imei">IMEI / Número de Serie (Opcional):</label>
-                        <input type="text" id="imei" placeholder="Ej. 354890123...">
-                    </div>
-                    <div class="form-group">
-                        <label for="pin">Contraseña / PIN del equipo:</label>
-                        <input type="text" id="pin" placeholder="Ej. 1234 o Patrón Z">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="accesorios">Condición y Accesorios (Golpes, cargador, etc):</label>
-                    <input type="text" id="accesorios" placeholder="Ej. Pantalla trizada, trae funda y cargador...">
-                </div>
-
-                <div class="form-group">
-                    <label for="falla">Motivo de ingreso / Falla reportada:</label>
-                    <textarea id="falla" rows="2" placeholder="Ej. No enciende, cambio de batería..." required></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label for="foto-evidencia">📷 Fotografías de Evidencia (Opcional):</label>
-                    <input type="file" id="foto-evidencia" accept="image/*" capture="environment" style="background: transparent; border: none; padding: 0;">
-                    <small>Se guardará una copia comprimida para ahorrar espacio.</small>
-                    <div id="preview-foto" style="margin-top: 10px; display: none;">
-                        <img id="img-evidencia-preview" src="" alt="Previsualización" style="max-width: 100%; height: auto; max-height: 150px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    </div>
-                </div>
-
-                <!-- Fila 4: Dinero y Estado -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="estado">Estado Inicial:</label>
-                        <select id="estado" required>
-                            <option value="ingresado">📥 Ingresado</option>
+            <div class="panel-registros">
+                <div class="header-registros">
+                    <h2>📋 Equipos en Taller</h2>
+                    <div class="controles-busqueda">
+                        <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
+                        <select id="filtro-estado">
+                            <option value="activos">Sólo Activos en Taller</option>
+                            <option value="todos">Ver Historial Completo</option>
+                            <option value="ingresado">📥 Ingresados</option>
                             <option value="revision">🔍 En Revisión</option>
+                            <option value="repuesto">⏳ Esperando Repuesto</option>
+                            <option value="reparado">✅ Listos para Entregar</option>
+                            <option value="entregado">📦 Entregados</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="costo">Presupuesto / Costo Total ($):</label>
-                        <input type="number" id="costo" placeholder="0 si aún no hay presupuesto" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="abono">Abono Inicial ($):</label>
-                        <input type="number" id="abono" placeholder="0">
-                    </div>
                 </div>
-
-                <button type="submit" class="btn-guardar">💾 Guardar y Generar Ticket</button>
-            </form>
-        </div>
-
-        <div class="panel-registros">
-            <div class="header-registros">
-                <h2>📋 Equipos en Taller</h2>
-                <div class="controles-busqueda">
-                    <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
-                    <select id="filtro-estado">
-                        <option value="activos">Sólo Activos en Taller</option>
-                        <option value="todos">Ver Historial Completo</option>
-                        <option value="ingresado">📥 Ingresados</option>
-                        <option value="revision">🔍 En Revisión</option>
-                        <option value="repuesto">⏳ Esperando Repuesto</option>
-                        <option value="reparado">✅ Listos para Entregar</option>
-                        <option value="entregado">📦 Entregados</option>
-                    </select>
+                
+                <div id="loader" class="loader" style="display: none;">Cargando base de datos...</div>
+                <div id="lista-proyectos" class="grid-proyectos">
+                    <!-- Tarjetas dinámicas -->
                 </div>
             </div>
-            
-            <div id="loader" class="loader" style="display: none;">Cargando base de datos...</div>
-            <div id="lista-proyectos" class="grid-proyectos">
-                <!-- Tarjetas dinámicas -->
+        </div>
+
+        <!-- VISTA: CATÁLOGO Y PRECIOS -->
+        <div id="vista-catalogo" style="display: none;">
+            <div class="panel-ingreso">
+                <h3>📚 Agregar al Catálogo de Precios</h3>
+                <p style="color:var(--text-muted); font-size:14px;">Define tus precios de reparación. Aparecerán automáticamente al ingresar un equipo.</p>
+                <form id="catalogo-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Marca:</label>
+                            <input type="text" id="cat-marca" placeholder="Ej. Apple" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Modelo:</label>
+                            <input type="text" id="cat-modelo" placeholder="Ej. iPhone 13" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Reparación:</label>
+                            <input type="text" id="cat-reparacion" placeholder="Ej. Cambio de Pantalla Orig." required>
+                        </div>
+                        <div class="form-group">
+                            <label>Precio a cobrar ($):</label>
+                            <input type="number" id="cat-precio" placeholder="Ej. 85000" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-guardar" style="background:#8b5cf6;">➕ Guardar en Catálogo</button>
+                </form>
+            </div>
+
+            <div class="panel-registros">
+                <h2>📋 Tus Precios Guardados</h2>
+                <div id="lista-catalogo" class="grid-proyectos" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));">
+                    <!-- Catálogo dinámico -->
+                </div>
             </div>
         </div>
     </div>
