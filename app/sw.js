@@ -1,9 +1,9 @@
-const CACHE_NAME = 'techfix-cache-v2';
+const CACHE_NAME = 'techfix-cache-v3';
 const urlsToCache = [
     './',
     './index.html',
     './estilos.css',
-    './app.js',
+    './app.js?v=3',
     './manifest.json',
     './logo.jpg',
     './icon-192.png',
