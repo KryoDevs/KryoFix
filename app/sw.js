@@ -1,4 +1,4 @@
-const CACHE_NAME = 'techfix-cache-v1';
+const CACHE_NAME = 'techfix-cache-v2';
 const urlsToCache = [
     './',
     './index.html',
@@ -6,7 +6,8 @@ const urlsToCache = [
     './app.js',
     './manifest.json',
     './logo.jpg',
-    './icon-512.jpg'
+    './icon-192.png',
+    './icon-512.png'
 ];
 
 // Instalar el Service Worker y guardar recursos en caché
