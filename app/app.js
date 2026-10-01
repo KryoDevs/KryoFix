@@ -193,6 +193,8 @@ function renderizarProyectos() {
                 <br><span style="font-size:12px; color:var(--text-muted);">Abonado: ${abonoFormateado}</span>
             </p>
             
+            ${proyecto.firmaCliente ? `<div style="text-align:center; margin-top:10px;"><img src="${proyecto.firmaCliente}" class="firma-guardada" alt="Firma del cliente"><p style="font-size:12px; color:var(--text-muted); margin:0;">Firma de Conformidad</p></div>` : ''}
+
             <div class="acciones-tarjeta">
                 <button class="btn-accion btn-imprimir" onclick="imprimirBoleta('${proyecto.id}')">🖨️ Ticket</button>
                 <button class="btn-accion btn-wsp" onclick="enviarWhatsApp('${proyecto.telefono}', '${proyecto.cliente}', '${proyecto.modelo}', '${proyecto.estado}', ${proyecto.costo})">💬 WhatsApp</button>
@@ -265,17 +267,12 @@ window.cambiarEstado = async function(id, nuevoEstado) {
 };
 
 window.archivarProyecto = function(id) {
-    Swal.fire({
-        title: '¿Marcar como Entregado?',
-        text: "El equipo pasará al Historial de Entregados.",
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Sí, entregado'
-    }).then((result) => {
-        if (result.isConfirmed) cambiarEstado(id, 'entregado');
-    });
+    currentFirmaId = id;
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar canvas previo
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000';
+    document.getElementById('modal-firma').style.display = 'flex';
 };
 
 window.eliminarProyectoPermanente = async function(id) {
@@ -384,3 +381,70 @@ window.imprimirBoleta = function(id) {
 // Eventos de búsqueda
 buscador.addEventListener('input', renderizarProyectos);
 filtroEstado.addEventListener('change', renderizarProyectos);
+
+// ========================
+// 6. FIRMA DIGITAL
+// ========================
+let isDrawing = false;
+let currentFirmaId = null;
+const canvas = document.getElementById('canvas-firma');
+const ctx = canvas.getContext('2d');
+const modalFirma = document.getElementById('modal-firma');
+
+function getPointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+function startDrawing(e) {
+    isDrawing = true;
+    const pos = getPointerPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    e.preventDefault();
+}
+
+function draw(e) {
+    if (!isDrawing) return;
+    const pos = getPointerPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    e.preventDefault();
+}
+
+function stopDrawing() {
+    isDrawing = false;
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', startDrawing);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', stopDrawing);
+canvas.addEventListener('mouseout', stopDrawing);
+// Touch events
+canvas.addEventListener('touchstart', startDrawing, {passive: false});
+canvas.addEventListener('touchmove', draw, {passive: false});
+canvas.addEventListener('touchend', stopDrawing);
+
+document.getElementById('btn-limpiar-firma').addEventListener('click', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+document.getElementById('btn-cancelar-firma').addEventListener('click', () => {
+    modalFirma.style.display = 'none';
+});
+
+document.getElementById('btn-guardar-firma').addEventListener('click', () => {
+    const dataUrl = canvas.toDataURL('image/png');
+    db.collection('equipos').doc(currentFirmaId).update({
+        estado: 'entregado',
+        firmaCliente: dataUrl
+    }).then(() => {
+        modalFirma.style.display = 'none';
+        Swal.fire('Entregado!', 'El equipo fue entregado con la firma del cliente.', 'success');
+    }).catch(error => {
+        Swal.fire('Error', 'No se pudo guardar.', 'error');
+    });
+});

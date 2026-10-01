@@ -167,6 +167,20 @@
         </div>
     </div>
 
+    <!-- Modal Firma Digital -->
+    <div id="modal-firma" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:var(--text-main);">Firma de Conformidad</h3>
+            <p style="color:var(--text-muted); font-size:14px; margin-bottom:15px;">Por favor, firme abajo para confirmar la recepción del equipo.</p>
+            <canvas id="canvas-firma" width="300" height="150"></canvas>
+            <div class="modal-actions">
+                <button id="btn-limpiar-firma" class="btn-icon">Limpiar</button>
+                <button id="btn-cancelar-firma" class="btn-cancelar">Cancelar</button>
+                <button id="btn-guardar-firma" class="btn-guardar">Guardar y Entregar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Plantilla oculta para impresión -->
     <div id="ticket-impresion" class="ticket-impresion"></div>
 
