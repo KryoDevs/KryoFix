@@ -250,6 +250,8 @@ function renderizarProyectos() {
                 <br><span style="font-size:12px; color:var(--text-muted);">Abonado: ${abonoFormateado}</span>
             </p>
             
+            ${proyecto.evidencia ? `<div style="text-align:center; margin-top:10px;"><img src="${escapeHtml(proyecto.evidencia)}" style="max-width:100%; height:auto; border-radius:8px; border:1px solid var(--border-color); cursor:pointer;" onclick="Swal.fire({imageUrl: '${escapeHtml(proyecto.evidencia)}', imageAlt: 'Evidencia', width: '90%', padding: 0})"><p style="font-size:12px; color:var(--text-muted); margin:0;">📷 Evidencia Fotográfica (Clic para ampliar)</p></div>` : ''}
+
             ${proyecto.firmaCliente ? `<div style="text-align:center; margin-top:10px;"><img src="${escapeHtml(proyecto.firmaCliente)}" class="firma-guardada" alt="Firma del cliente"><p style="font-size:12px; color:var(--text-muted); margin:0;">✅ Firma de Conformidad</p></div>` : ''}
 
             <div class="acciones-tarjeta">
@@ -272,8 +274,59 @@ function renderizarProyectos() {
 
 
 // ========================
-// 4. NUEVO INGRESO
+// 4. NUEVO INGRESO Y FOTOS
 // ========================
+let fotoComprimidaBase64 = null;
+
+// Lógica para previsualizar y comprimir la foto seleccionada
+document.getElementById('foto-evidencia').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) {
+        fotoComprimidaBase64 = null;
+        document.getElementById('preview-foto').style.display = 'none';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+            // Comprimir imagen a max 600px de ancho/alto
+            const maxSize = 600;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > maxSize) {
+                    height *= maxSize / width;
+                    width = maxSize;
+                }
+            } else {
+                if (height > maxSize) {
+                    width *= maxSize / height;
+                    height = maxSize;
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Guardar como JPEG comprimido al 50%
+            fotoComprimidaBase64 = canvas.toDataURL('image/jpeg', 0.5);
+
+            // Mostrar previsualización
+            const preview = document.getElementById('img-evidencia-preview');
+            preview.src = fotoComprimidaBase64;
+            document.getElementById('preview-foto').style.display = 'block';
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
 form.addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -283,7 +336,7 @@ form.addEventListener('submit', async function(e) {
     }
 
     const nuevoProyecto = {
-        uid: currentUser.uid, // MULTI-TÉCNICO: asociar equipo al técnico
+        uid: currentUser.uid,
         cliente: document.getElementById('cliente').value,
         telefono: document.getElementById('telefono').value,
         equipo: document.getElementById('equipo').value,
@@ -296,13 +349,20 @@ form.addEventListener('submit', async function(e) {
         costo: Number(document.getElementById('costo').value),
         abono: Number(document.getElementById('abono').value || 0),
         fecha: new Date().toLocaleDateString('es-CL'),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        evidencia: fotoComprimidaBase64 // Se añade la foto comprimida si existe
     };
+
+    const btnSubmit = form.querySelector('button[type="submit"]');
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
 
     try {
         await db.collection('equipos').add(nuevoProyecto);
         form.reset();
-
+        fotoComprimidaBase64 = null;
+        document.getElementById('preview-foto').style.display = 'none';
+        
         if(filtroEstado.value === 'entregado') filtroEstado.value = 'activos';
 
         Swal.fire({
@@ -313,6 +373,9 @@ form.addEventListener('submit', async function(e) {
         listaProyectos.scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
         Swal.fire('Error', 'No se pudo guardar el equipo. Revisa tu conexión.', 'error');
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = '💾 Guardar y Generar Ticket';
     }
 });
 
@@ -530,3 +593,17 @@ document.getElementById('btn-guardar-firma').addEventListener('click', async () 
         btnGuardar.disabled = false;
     }
 });
+
+// ========================
+// 7. PWA SERVICE WORKER REGISTRO
+// ========================
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(registration => {
+            console.log('ServiceWorker registrado con exito:', registration.scope);
+        }, err => {
+            console.log('Fallo al registrar el ServiceWorker:', err);
+        });
+    });
+}
+

@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="estilos.css">
     <!-- SweetAlert2 para notificaciones bonitas -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="icon-512.jpg">
 </head>
 <body>
 
@@ -119,6 +124,15 @@
                 <div class="form-group">
                     <label for="falla">Motivo de ingreso / Falla reportada:</label>
                     <textarea id="falla" rows="2" placeholder="Ej. No enciende, cambio de batería..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="foto-evidencia">📷 Fotografías de Evidencia (Opcional):</label>
+                    <input type="file" id="foto-evidencia" accept="image/*" capture="environment" style="background: transparent; border: none; padding: 0;">
+                    <small>Se guardará una copia comprimida para ahorrar espacio.</small>
+                    <div id="preview-foto" style="margin-top: 10px; display: none;">
+                        <img id="img-evidencia-preview" src="" alt="Previsualización" style="max-width: 100%; height: auto; max-height: 150px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    </div>
                 </div>
 
                 <!-- Fila 4: Dinero y Estado -->
