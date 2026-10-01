@@ -14,7 +14,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.storage(); // FIX: Firebase Storage para firmas
 
 // Activar persistencia offline (soporte sin internet)
 db.enablePersistence().catch(function(err) {
@@ -495,31 +494,33 @@ document.getElementById('btn-cancelar-firma').addEventListener('click', () => {
     modalFirma.style.display = 'none';
 });
 
-// FIX: Subir firma a Firebase Storage (no a Firestore como base64)
+// ALTERNATIVA SIN STORAGE: Comprimir firma y guardar en Firestore
 document.getElementById('btn-guardar-firma').addEventListener('click', async () => {
     const btnGuardar = document.getElementById('btn-guardar-firma');
     btnGuardar.textContent = 'Guardando...';
     btnGuardar.disabled = true;
 
     try {
-        // Convertir canvas a Blob (binario, no base64)
-        canvas.toBlob(async (blob) => {
-            const storageRef = storage.ref(`firmas/${currentFirmaId}_${Date.now()}.png`);
-            const snapshot = await storageRef.put(blob);
-            const downloadURL = await snapshot.ref.getDownloadURL();
+        // Crear un canvas temporal más pequeño para comprimir la imagen
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 200;   // Reducido desde 300
+        tempCanvas.height = 80;   // Reducido desde 150
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(canvas, 0, 0, 200, 80);
 
-            // Guardar solo la URL (liviana) en Firestore, no la imagen
-            await db.collection('equipos').doc(currentFirmaId).update({
-                estado: 'entregado',
-                firmaCliente: downloadURL // URL en lugar de base64
-            });
+        // JPEG con calidad 0.4 = ~5-10KB (vs ~120KB de PNG original)
+        const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.4);
 
-            modalFirma.style.display = 'none';
-            Swal.fire('¡Entregado!', 'El equipo fue entregado con la firma del cliente guardada en la nube.', 'success');
-        }, 'image/png');
+        await db.collection('equipos').doc(currentFirmaId).update({
+            estado: 'entregado',
+            firmaCliente: dataUrl
+        });
+
+        modalFirma.style.display = 'none';
+        Swal.fire('¡Entregado!', 'Equipo entregado con firma del cliente guardada.', 'success');
     } catch (error) {
         console.error(error);
-        Swal.fire('Error', 'No se pudo guardar la firma. Revisa tu conexión.', 'error');
+        Swal.fire('Error', 'No se pudo guardar la firma.', 'error');
     } finally {
         btnGuardar.textContent = 'Guardar y Entregar';
         btnGuardar.disabled = false;
