@@ -131,15 +131,19 @@ function cargarDatos() {
     if (!currentUser) return;
     loader.style.display = 'block';
 
-    // MULTI-TÉCNICO: Filtrar por uid del técnico logueado + límite de 500
+    // Carga todos los equipos del técnico logueado.
+    // También muestra documentos antiguos (sin campo uid) para compatibilidad.
     unsubscribeDB = db.collection('equipos')
-        .where('uid', '==', currentUser.uid)
         .orderBy('timestamp', 'desc')
         .limit(500)
         .onSnapshot((snapshot) => {
             proyectos = [];
             snapshot.forEach((doc) => {
-                proyectos.push({ id: doc.id, ...doc.data() });
+                const data = doc.data();
+                // Mostrar solo los del técnico actual O los que no tienen uid (datos viejos)
+                if (!data.uid || data.uid === currentUser.uid) {
+                    proyectos.push({ id: doc.id, ...data });
+                }
             });
             loader.style.display = 'none';
             renderizarProyectos();
@@ -147,7 +151,7 @@ function cargarDatos() {
         }, (error) => {
             console.error(error);
             loader.style.display = 'none';
-            Swal.fire('Error', 'No tienes permisos para ver la base de datos.', 'error');
+            Swal.fire('Error de Permisos', 'Actualiza las reglas de Firestore en la consola de Firebase para continuar.', 'error');
         });
 }
 
