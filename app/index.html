@@ -60,6 +60,7 @@
                 <h1>TechFix Tracker Pro</h1>
             </div>
             <nav class="user-actions" aria-label="Acciones de usuario">
+                <span id="red-status" class="badge-estado estado-reparado" style="display: none;">📶 Online</span>
                 <span id="user-email-display" class="user-email"></span>
                 <button type="button" id="btn-nav-taller" class="btn-icon activo" aria-current="page">🏠 Taller</button>
                 <button type="button" id="btn-nav-catalogo" class="btn-icon" aria-current="false">📚 Catalogo</button>
@@ -191,7 +192,7 @@
                 <div class="header-registros">
                     <h2>📋 Equipos en Taller</h2>
                     <div class="controles-busqueda">
-                        <label class="sr-only" for="buscador">Buscar equipos</label>
+                        <button type="button" id="btn-exportar" class="btn-icon" style="background: var(--primary); color: white; margin-right: 10px;" title="Exportar datos a CSV">?? Exportar</button><label class="sr-only" for="buscador">Buscar equipos</label>
                         <input type="search" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
@@ -243,7 +244,7 @@
 
             <div class="panel-registros">
                 <h2>📋 Tus precios guardados</h2>
-                <div id="lista-catalogo" class="grid-proyectos grid-catalogo" aria-live="polite"></div>
+                <div class="controles-busqueda" style="margin-bottom: 20px;"><input type="search" id="cat-buscador" placeholder="?? Buscar marca, modelo o reparaci�n..."></div><div id="lista-catalogo" class="grid-proyectos grid-catalogo" aria-live="polite"></div>
             </div>
         </section>
         </main>
@@ -268,3 +269,5 @@
 
 </body>
 </html>
+
+
