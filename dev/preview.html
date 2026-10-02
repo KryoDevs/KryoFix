@@ -36,15 +36,34 @@
             <div class="stat-card stat-money"><h3>Ingresos del Mes</h3><p class="stat-valor">$1.240.000</p></div>
         </div>
 
+        <div id="aviso-demo" hidden></div>
+
         <div class="panel-registros">
             <div class="header-registros">
                 <h2>📋 Equipos en Taller</h2>
                 <div class="controles-busqueda">
+                    <button type="button" class="btn-icon btn-exportar">📤 Exportar CSV</button>
                     <input type="search" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
                     <select><option>Solo activos en taller</option></select>
                 </div>
             </div>
             <div class="grid-proyectos" id="demo"></div>
+        </div>
+
+        <div class="panel-ingreso">
+            <h2>Estados vacios y validacion</h2>
+            <p class="sin-resultados">No hay equipos registrados.</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="demo-invalido">Campo con valor invalido</label>
+                    <input type="text" id="demo-invalido" class="campo-invalido" value="569... (telefono corto)">
+                </div>
+                <div class="form-group">
+                    <label for="demo-normal">Campo normal</label>
+                    <input type="text" id="demo-normal" value="56912345678">
+                </div>
+            </div>
+            <button type="button" class="enlace-login">Olvide mi contrasena</button>
         </div>
     </div>
 

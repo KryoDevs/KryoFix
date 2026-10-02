@@ -1,21 +1,29 @@
 # Análisis de TechFix Tracker Pro
 
-Revisión completa del repositorio en el commit `d751523`, con los bugs encontrados,
-las tres listas solicitadas (10 bien / 10 mal / 10 mejorables) y el registro del
-ciclo de corrección.
+Este documento tiene dos partes:
 
-**Tamaño auditado:** 1.386 líneas en 8 archivos (`app.js` 548, `index.html` 265,
-`estilos.css` 253, `status.html` 152, `status.js` 78, `sw.js` 53, `manifest.json`,
-`firebase.json`).
+- **Parte 1** — la revisión original (commit `d751523`) y su resolución.
+- **Parte 2** — la **segunda auditoría** (commit `5cd5554`), que es la que originó
+  los cambios de la versión actual.
+
+## Estado de la verificación automática
+
+```
+ESLint ................ 0 errores, 0 avisos
+Auditoría estática .... 0 errores, 0 avisos
+Tests (jsdom) ......... 67 / 67   (antes: 28 / 28)
+```
+
+Los tres comandos se ejecutan en cada push y cada PR con
+`.github/workflows/calidad.yml`.
 
 ---
 
-## Resumen ejecutivo
+# Parte 1 — Revisión original (resuelta)
 
-El proyecto es un buen producto con una base técnica sencilla y sensata, pero
-tenía **tres fallas de seguridad críticas** que exponían datos personales de los
-clientes del taller, y **una falla visual que dejaba la pantalla principal sin
-estilos**.
+El proyecto tenía **tres fallas de seguridad críticas** que exponían datos
+personales de los clientes del taller y **una falla visual** que dejaba la
+pantalla principal sin estilos.
 
 | Severidad | Encontrados | Resueltos |
 |-----------|-------------|-----------|
@@ -24,275 +32,231 @@ estilos**.
 | 🟡 Media (robustez, rendimiento, UX) | 11 | 11 |
 | ⚪ Mejoras de fondo | 10 | 3 (resto documentado) |
 
-Estado final de la verificación automática:
+Resumen de lo corregido entonces:
+
+1. **Fuga de datos entre técnicos (crítica).** La consulta descargaba hasta 500
+   órdenes de *todos* los técnicos y filtraba en el navegador: nombre, teléfono,
+   IMEI, PIN, foto y firma viajaban al dispositivo. Ahora `.where('uid','==',…)`
+   en el servidor, con índice compuesto y reglas que lo imponen.
+2. **La página pública del QR exponía la ficha completa (crítica).** `status.js`
+   leía `equipos` sin autenticación. Se introdujo el espejo público
+   `seguimiento` limitado por regla a `uid`, `estado`, `modelo` y `actualizado`.
+3. **Reglas de Firestore ausentes del repositorio (crítica).** Único control de
+   acceso real, fuera de todo control de versiones. Ahora versionadas.
+4. **Pantalla principal sin estilos.** Clases generadas por `app.js` que no
+   existían en el CSS (`tarjeta-proyecto`, `badge-estado`, `btn-whatsapp`…).
+5. **La PWA no abría sin conexión.** SDK y SweetAlert2 venían de CDN y no estaban
+   en la caché; el service worker no tenía `skipWaiting` e interceptaba POST.
+
+*(El detalle completo, con las listas de 10 cosas bien / 10 mal / 10 mejorables,
+está en el historial de Git de este archivo.)*
+
+---
+
+# Parte 2 — Segunda auditoría (commit `5cd5554`)
+
+Se revisó el estado real del repositorio **antes** de tocar nada: `git log`,
+configuración, código, reglas, workflows, assets y la salida del propio CI.
+
+## 2.1 Lo primero que estaba fallando: el CI (y por tanto, la garantía de calidad)
 
 ```
-ESLint ................ 0 errores
-Auditoría estática .... 0 errores, 0 avisos
-Tests (jsdom) ......... 28 / 28
+completed  failure  Calidad (lint + auditoria + tests)   main  push  #36965696614
+completed  failure  Calidad (lint + auditoria + tests)   main  push  #36965577419
+completed  success  Deploy to Firebase Hosting on merge   main  push  #36965696625
 ```
 
----
+La verificación estaba en rojo en `main` y, como el deploy es un workflow
+independiente, **el hosting seguía publicando** versiones sin pasar ninguna
+comprobación. La causa concreta:
 
-## 🔴 Fallas graves encontradas
-
-### 1. Fuga de datos entre técnicos (crítica)
-
-`app.js:122` consultaba la colección completa y filtraba **en el navegador**:
-
-```js
-db.collection('equipos').orderBy('timestamp','desc').limit(500)
-  .onSnapshot(snapshot => {
-      snapshot.forEach(doc => {
-          const data = doc.data();
-          if (!data.uid || data.uid === currentUser.uid) { ... }   // filtro en cliente
-      });
+```
+app/app.js
+  1338:26  error  'Blob' is not defined  no-undef
 ```
 
-Cualquier usuario autenticado **descargaba hasta 500 órdenes de todos los
-técnicos**: nombre del cliente, teléfono, IMEI, PIN del equipo, fotografía y
-firma. El filtro visual no impide nada: los datos ya viajaron al dispositivo y
-son visibles en la pestaña Network o con `TechFix.proyectos()`.
+El código nuevo del ciclo anterior (exportar CSV) usaba `Blob` sin declararlo
+entre los globales de ESLint. **Corregido**, y además ahora `npm run check`
+verifica también que los assets generados estén en su sitio y sincronizados
+(§2.6), de modo que un fallo se detecta antes de desplegar.
 
-El mismo defecto provocaba un **bug funcional**: si otros usuarios tenían 500
-registros más recientes, el técnico no veía **ninguno** de los suyos.
+## 2.2 🔴 Hallazgos graves
 
-**Corregido:** el filtro es ahora del lado del servidor
-(`.where('uid','==',currentUser.uid)`), más `firestore.rules` que lo imponen,
-más el índice compuesto que la consulta necesita.
+### 1. `index.html` estaba corrupto (mezcla latin-1 / UTF-8)
 
-### 2. La página pública del QR exponía la ficha completa (crítica)
-
-`status.js:32` leía la colección privada:
-
-```js
-db.collection('equipos').doc(ticketId).onSnapshot(doc => { ... })
+```
+app/index.html:14167  b'... placeholder="?? Buscar marca, modelo o reparaci\xf3n..." ...'
+                                                      ^^^^^^^^^^^ byte 0xF3 (latin-1)
 ```
 
-La página solo pinta estado y modelo, pero **descarga el documento entero** y es
-pública, sin autenticación. Para que funcionara, las reglas tenían que permitir
-lectura anónima sobre `equipos`. Resultado: con el ID impreso en un ticket (o
-probando IDs) se obtenía **el PIN de desbloqueo del teléfono del cliente**, su
-número, su IMEI, la foto del equipo y su firma manuscrita.
+El archivo tenía emojis en UTF-8 y, en medio, byte `0xF3` con el resto de los
+emojis convertidos en `??`. En la interfaz real se leía:
 
-**Corregido:** se introdujo la colección espejo `seguimiento`, que solo contiene
-`uid`, `estado`, `modelo` y `actualizado`. Las reglas usan `keys().hasOnly([...])`,
-así que es *imposible* publicar un campo sensible por error. `equipos` pasó a ser
-estrictamente privada.
+| Antes | Ahora |
+|-------|-------|
+| `?? Online` (indicador de red) | `📶 Online` |
+| `?? Exportar` (botón nuevo) | `📤 Exportar CSV` |
+| `?? Buscar marca, modelo o reparaciM-sn...` | `🔍 Buscar por marca, modelo o reparacion...` |
 
-### 3. Reglas de Firestore ausentes del repositorio (crítica)
+Una barra de búsqueda con texto ilegible en producción es un síntoma rápido de
+"aquí se editó con un editor mal configurado". **Corregido** y con **regresión
+automatizada**: `tools/audit.mjs` falla si un archivo de texto no está en UTF-8 o
+si encuentra `??` en texto visible.
 
-No existía `firestore.rules` ni sección `firestore` en `firebase.json`. El propio
-código lo delataba:
+### 2. La firma de conformidad se guardaba como un rectángulo negro
 
-```js
-Swal.fire('Error de Permisos', 'Actualiza las reglas de Firestore en la consola de Firebase.', 'error');
-```
+El lienzo se preparaba con `ctx.clearRect(...)` (dejándolo **transparente**) y
+luego se exportaba con `canvas.toDataURL('image/jpeg', 0.5)`. El JPEG no tiene
+canal alfa: cada píxel transparente se codifica **negro**. Como el trazo se
+dibujaba en `#111827`, el resultado era un rectángulo negro con una firma negra
+casi invisible.
 
-Las reglas son el **único** control de acceso real de esta arquitectura y estaban
-fuera del control de versiones, sin revisión ni despliegue reproducible.
+Es el documento que el cliente firma como conformidad de la entrega: no se podía
+leer, y era imposible de recuperar después. **Corregido**: se pinta el fondo de
+blanco en `prepararCanvas()` y en "Limpiar" (`fillRect`), con un test que exige
+que el primer trazo del contexto sea un relleno de fondo.
 
-**Corregido:** `firestore.rules` + `firestore.indexes.json` versionados y
-referenciados en `firebase.json`, con validación de propiedad, de forma del
-documento y de rangos (`abono <= costo`).
+### 3. El QR del ticket se generaba en un servicio de terceros
 
-### 4. La pantalla principal se renderizaba sin estilos (alta)
+`api.qrserver.com` recibía la URL de seguimiento de **cada orden impresa**. Para
+un taller, eso es enviar datos de sus órdenes a un servidor externo sin ningún
+contrato; además, sin internet el ticket salía sin QR. **Corregido**:
 
-`app.js` generaba tarjetas con clases que **no existían** en `estilos.css`:
+- el QR se genera en el navegador con una librería local (`app/vendor/qrcode.js`,
+  el mismo QR exacto de la orden);
+- si la librería no está disponible (primer arranque sin red), se usa un **QR
+  estático versionado** (`app/ticket-qr.png`) que apunta a la página de
+  seguimiento, y la URL y el número de orden siempre quedan impresos como texto;
+- `tests/assets.test.mjs` **decodifica** el PNG con `jsQR` y comprueba que apunta
+  a la URL correcta: un QR ilegible es invisible a ojo.
 
-| Clase usada por el JS | ¿Definida en el CSS? |
-|---|---|
-| `tarjeta-proyecto` | ❌ (el CSS definía `tarjeta`) |
-| `badge-estado`, `estado-ingresado`… | ❌ |
-| `tarjeta-fecha` | ❌ (el CSS definía `fecha`) |
-| `select-estado-rapido` | ❌ (el CSS definía `select-estado`) |
-| `btn-whatsapp` | ❌ (el CSS definía `btn-wsp`) |
+### 4. Dependencias de CDN y política de seguridad
 
-El CSS había quedado desincronizado tras un refactor: ~60 líneas de estilos
-muertos y la lista de equipos saliendo como texto plano sin tarjetas, sin colores
-de estado y sin botones con formato.
+Los SDK de Firebase y SweetAlert2 se cargaban de `gstatic.com` y `jsdelivr.net`.
+Eso significaba: un CDN comprometido podía ejecutar código en una página con
+datos personales; una red que bloquee CDNs dejaba el taller sin aplicación; y la
+CSP no podía pasar de `script-src 'self' https://…`.
 
-**Corregido:** estilos reescritos para las clases reales, estilos muertos
-eliminados, y `tools/audit.mjs` falla el build si vuelve a aparecer una clase
-huérfana.
+**Corregido**: las cinco dependencias se sirven desde `app/vendor/` (mismo
+origen), lo que **endurece la CSP a `script-src 'self'`**, elimina los CDNs del
+`connect-src` y permite que el service worker las precachee (la PWA ahora sí
+funciona sin conexión desde la primera instalación). Se añadió `npm run vendor`
+y un test que verifica que lo servido es **byte a byte** el paquete fijado en
+`package.json`.
 
-### 5. La PWA no funcionaba sin conexión (alta)
+### 5. Arranque silenciosamente roto
 
-El service worker precacheaba solo los archivos propios. Firebase SDK y
-SweetAlert2 venían de CDN y **no estaban en la caché**, así que abrir la app sin
-red producía `firebase is not defined` y una pantalla en blanco — justo lo
-contrario de lo que promete una PWA para un taller.
+Si el SDK no cargaba, el archivo entero moría en la primera línea con
+`firebase is not defined` y la pantalla quedaba en blanco. En la página pública
+del QR el mensaje "Buscando tu equipo..." se quedaba ahí para siempre.
+**Corregido**: aviso en pantalla con botón "Reintentar" en la app, y mensaje de
+error claro en la página pública cuando el SDK o el permiso de lectura fallan.
 
-Además la estrategia era *cache-first* pura, sin `skipWaiting()` ni
-`clients.claim()`: los usuarios quedaban con código viejo indefinidamente (el
-último commit del repo, *"Forzar purga de caché del PWA para reemplazar código
-corrupto en clientes locales"*, es la cicatriz de ese problema). Y se
-interceptaban **todas** las peticiones, incluidas las `POST` de escritura a
-Firestore.
+## 2.3 🟠 Problemas funcionales y de datos
 
-**Corregido:** SW reescrito — red-primero para navegaciones, stale-while-revalidate
-para estáticos, cache-first para librerías de versión fija (ahora sí precacheadas),
-se ignoran los métodos distintos de GET y los dominios de Firebase, y
-`skipWaiting` + `clients.claim` + aviso de versión nueva en la UI.
+| # | Problema encontrado | Impacto | Estado |
+|---|---------------------|---------|--------|
+| 1 | El botón decía **"Guardar y generar ticket"** pero no generaba ningún ticket: había que buscar la tarjeta y acertar "🧾 Ticket" | 🟠 Función prometida que no existía | ✅ Al guardar pregunta "¿Imprimir la boleta ahora?" |
+| 2 | **Fechas guardadas como texto localizado** (`new Date().toLocaleDateString('es-CL')` → `02-10-2026`) | 🟠 No ordenables, ambiguas y sin zona horaria; ensucian cualquier exportación | ✅ Se guarda **ISO 8601** (con lectura tolerante de las órdenes antiguas) |
+| 3 | **El selector de estado permitía "Entregado" sin firma** y retroceder de `entregado` a `ingresado` con un clic | 🟠 Contradecía el aviso de la propia app; pérdida de trazabilidad | ✅ Transiciones válidas por etapa (+1 hacia atrás), opciones deshabilitadas y aviso si se entrega sin firma |
+| 4 | **Sin historial de estados**: solo el estado actual | 🟡 Imposible medir tiempos de reparación o resolver disputas | ✅ `historial: [{estado, en, por}]` con `arrayUnion` |
+| 5 | **Sin recuperación ni cambio de contraseña** (mejora documentada y pendiente) | 🟠 Un taller que olvida la contraseña queda fuera de su propio sistema | ✅ "Olvidé mi contraseña" + cambio de contraseña desde la sesión |
+| 6 | **Nada avisaba de equipos sin retirar**, aunque el ticket imprima "equipos no retirados en 60 días serán donados" | 🟡 Riesgo legal/operativo sin control | ✅ Aviso a los 30 días + distintivo a los 7 días en la tarjeta |
+| 7 | **CSV mal escapado**: comillas internas sin duplicar, sin BOM, sin saldo, e ignoraba el filtro activo | 🟠 Filas rotas (`Ana "la jefa"`), tildes ilegibles en Excel, exportaciones que no corresponden a lo visto | ✅ Escapado RFC 4180 de todos los campos, BOM, saldo y fechas, y exporta lo que el filtro deja ver |
+| 8 | **Catálogo con dos rutas de render**: el buscador reimplementaba el pintado sin debounce | 🟡 Jank al escribir y riesgo de que ambas rutas diverjan (el bug apareció dos veces) | ✅ Una sola función `renderizarCatalogo()` + debounce + estado vacío correcto |
+| 9 | **Copiar el enlace de seguimiento era manual** (seleccionar el texto del ticket) | 🟡 Fricción diaria | ✅ Botón "📤 Compartir" (Web Share API → portapapeles → texto) |
+| 10 | **Modal de firma sin trampa de foco** | 🟡 Accesibilidad: el tabulador se escapaba del diálogo | ✅ Trampa de foco y `aria-live` en el aviso de red |
 
----
+## 2.4 🟡 Robustez, rendimiento y presentación
 
-## ✅ 10 cosas que están BIEN
+- **Números de orden legibles** (`TF-251002-001`): antes el ticket mostraba 8
+  caracteres del ID aleatorio de Firestore, imposible de dictar por teléfono.
+- **Eventos conectados de forma tolerante**: `$('foto-evidencia')`,
+  `$('catalogo-form')`, `$('marca')`, `$('modelo')`… se usaban sin comprobar; un
+  cambio de HTML rompía la aplicación entera sin decir nada.
+- **Boleta construida con DOM**, no concatenando `innerHTML` (menos superficie de
+  inyección y sin `escapeHtml` manual campo por campo).
+- **Compresión de foto con reintentos**: el `while` de calidad podía quedarse
+  corto con fotos muy detalladas y superar el límite de 1 MiB por documento.
+  Ahora, si hace falta, reduce también el lado mayor. Límite: 200 KB.
+- **Binarios**: `icon-512.png` pesaba 1 MB (y medía 1024×1024 px, no 512),
+  `logo.jpg` 500 KB mostrado a 80×80. Ahora **105 KB / 17 KB / 5 KB**, con test
+  de tamaño y de dimensiones para que no vuelvan a crecer.
+- **Indicador de red** con `aria-live`, sin `setTimeout` duplicados.
+- **`mensaje-estado` en la página pública**: el cliente ve una frase en lenguaje
+  claro ("Nuestro técnico está revisando tu equipo") además de la línea de tiempo.
 
-1. **El producto resuelve un problema real y completo.** El flujo ingreso →
-   estados → entrega con firma → ticket con QR cubre el ciclo entero de un taller,
-   sin funcionalidad de relleno.
-2. **Cero build, cero framework.** HTML/CSS/JS plano: arranca instantáneo, lo
-   puede mantener cualquiera, y no hay deuda de dependencias de runtime que
-   envejezca.
-3. **Tiempo real bien aprovechado.** Usar `onSnapshot` en vez de recargas manuales
-   hace que la lista y el dashboard se mantengan vivos entre el PC del mostrador y
-   el móvil del técnico, gratis.
-4. **El catálogo de precios que autocompleta el presupuesto** (marca → modelo →
-   reparación → precio) es una idea de producto excelente: elimina errores de
-   cobro y acelera el ingreso.
-5. **Firma digital pensada para táctil**, con `touchstart`/`touchmove` y
-   `{ passive: false }`, y `touch-action: none` en el CSS. El detalle correcto que
-   mucha gente olvida.
-6. **Compresión de la foto en el cliente** antes de guardar (redimensionado a 600 px
-   + JPEG con calidad reducida): hay conciencia del coste de almacenamiento.
-7. **Tematización clara y barata** con variables CSS y `data-theme`, persistida en
-   `localStorage`. Implementación idiomática del modo oscuro.
-8. **La página pública de seguimiento por QR** es un diferenciador de servicio real
-   y está bien resuelta visualmente (timeline, estados, mensaje de retiro).
-9. **Formato de moneda con `Intl.NumberFormat('es-CL')`** en lugar de concatenar
-   `"$"`, en todos los sitios donde se muestra dinero.
-10. **Despliegue ya automatizado** con GitHub Actions: preview por PR y producción
-    al mergear, con el service account en secretos y no en el repo.
+## 2.5 ✅ Lo que ya estaba bien (y sigue igual)
 
-*(Mención extra: ya existían un `escapeHtml()` y un intento de filtrado por `uid`.
-Estaban mal implementados, pero demuestran que la seguridad estaba en el radar.)*
+1. Aislamiento por `uid` en el servidor, espejo público mínimo y reglas
+   versionadas — verificado, sin regresiones.
+2. `escapeHtml` completo y uso de `textContent`/`createElement` en las tarjetas.
+3. Firma táctil con `touchstart`/`touchmove` `{passive:false}` y
+   `touch-action: none`; escalado de coordenadas correcto.
+4. Service worker con `skipWaiting`, `clients.claim` y sin interceptar escrituras.
+5. Delegación de eventos (sin `onclick` inline) y `noopener` en `window.open`.
+6. Dashboard que cuenta cierres por fecha real de reparación.
+7. `enablePersistence` + borrado de la caché offline al cerrar sesión.
+8. Precios con `Intl.NumberFormat('es-CL')` en todos los puntos.
+9. Reglas que impiden publicar un campo sensible por error (`keys().hasOnly`).
+10. Reconciliación de estados `revision`/`En Revision` heredada de datos antiguos
+    documentada y tolerada.
 
----
+## 2.6 Tests y auditoría: de 28 a 67 comprobaciones
 
-## ❌ 10 cosas que están MAL
+| Área | Comprobación añadida |
+|------|----------------------|
+| Assets | El QR decodifica y apunta a `status.html`; el PNG versionado está sincronizado con el generador |
+| Assets | Iconos y logo con dimensiones y peso máximos; el manifest apunta a iconos existentes |
+| Dependencias | `app/vendor/` es idéntico a los paquetes fijados; sin rangos `^`/`~` en `package.json` |
+| Ticket | Se imprime el número de orden; QR local o de respaldo; URL como texto |
+| Firma | El fondo se pinta de blanco; la entrega guarda firma, fecha e historial |
+| Estados | Transiciones válidas, opciones deshabilitadas, historial y avisos de espera |
+| CSV | Escapado RFC 4180, BOM, saldo y respeto del filtro activo |
+| Red | Offline/Online con estilos y visibilidad correctos |
+| Formulario | Marca del campo inválido, fechas ISO y teléfono normalizado |
+| Reglas | `seguimiento` limitado a 4 claves y sin escritura anónima; `equipos`/`catalogo` privadas |
+| Arranque | Sin Firebase se avisa en pantalla y no hay excepciones sin capturar |
 
-| # | Problema | Impacto | Estado |
-|---|----------|---------|--------|
-| 1 | **Datos de todos los técnicos descargados por cualquiera** (`orderBy` sin `where uid`, filtrado en cliente) | 🔴 Fuga de PII + el técnico podía no ver sus propios equipos | ✅ Corregido |
-| 2 | **`status.html` público leía la ficha privada completa**: con el ID del ticket se obtenía PIN, teléfono, IMEI, foto y firma | 🔴 Fuga de PII masiva | ✅ Corregido (espejo `seguimiento`) |
-| 3 | **Sin `firestore.rules` en el repositorio**; el código pedía "actualizar las reglas en la consola" | 🔴 Único control de acceso sin versionar ni revisar | ✅ Corregido |
-| 4 | **CSS desincronizado del JS**: `tarjeta-proyecto`, `badge-estado`, `estado-*`, `select-estado-rapido`, `btn-whatsapp`, `tarjeta-fecha` no existían | 🟠 Pantalla principal sin estilos | ✅ Corregido + test de regresión |
-| 5 | **La PWA no abría sin conexión** (CDN no precacheados) y el SW cache-first sin `skipWaiting` dejaba código viejo; además interceptaba POST y otros orígenes | 🟠 Función principal rota | ✅ Corregido |
-| 6 | **Firma digital descalibrada**: canvas de 300×150 interno mostrado con `width:100%`; `getPointerPos` restaba el offset sin escalar → el trazo no seguía al dedo. Y se podía guardar **una firma en blanco** como prueba de conformidad | 🟠 Documento legal inválido | ✅ Corregido |
-| 7 | **El PIN del equipo era inútil y además filtraba información**: se guardaba en claro, se mostraba como `'*'.repeat(pin.length)` (revelando la longitud exacta) y **no había forma de verlo** | 🟠 Campo inservible + fuga | ✅ Máscara fija + botón "Ver" |
-| 8 | **Fugas de listeners y de datos locales**: `cargarCatalogo()` nunca se desuscribía, `onAuthStateChanged` podía duplicar suscripciones, y la caché offline de Firestore no se borraba al cerrar sesión (el siguiente usuario del dispositivo veía las órdenes del anterior) | 🟠 Fuga de memoria + privacidad | ✅ Corregido |
-| 9 | **Datos corruptos por falta de validación y de normalización**: `wa.me/+56 9 1234 5678` (teléfono sin limpiar) generaba enlaces rotos; marca/modelo "Otro" se guardaba **literalmente como "Otro"** perdiendo el modelo real; se aceptaban costos negativos y abonos mayores al total | 🟠 Datos inservibles | ✅ Corregido |
-| 10 | **Errores silenciosos y estadísticas incorrectas**: `cambiarEstado`/`delete` sin `try/catch` (fallo mudo si no hay red o permisos); "Reparados del mes" contaba por **fecha de ingreso** en vez de fecha de reparación, así que un equipo de enero entregado en marzo se contaba en enero | 🟡 Pérdida de confianza en los datos | ✅ Corregido |
+La auditoría estática (`tools/audit.mjs`) suma familias de comprobación nuevas:
+codificación UTF-8, `??` en texto visible, scripts referenciados inexistentes o
+servidos por CDN, CSP con `unsafe-inline`/`unsafe-eval`, uso de `Query.count()`
+(que **no existe** en `firebase@10.8.1` compat), presencia del QR versionado y
+precacheado de `app/vendor/`. También se corrigieron dos falsos negativos propios:
+el chequeo de `noopener` solo miraba una línea y el de debounce daba por bueno
+cualquier `setTimeout`.
 
-**Otros defectos corregidos en el mismo paso:** `escapeHtml()` no escapaba comillas
-(inyección de atributos) y se combinaba con `onclick="..."` construido por
-concatenación; URL del QR hardcodeada a `techfix-tracker-9a128.web.app` (rompía en
-dominio propio y en local); `window.open` sin `noopener` (reverse tabnabbing);
-destello de tema claro al cargar en modo oscuro; `innerHTML +=` dentro de bucles;
-buscador re-renderizando en cada tecla; dependencia de CDN con rango flotante
-(`sweetalert2@11`); sin cabeceras de seguridad en hosting; sin `.gitignore` (había
-un artefacto `.firebase/` versionado); `icon-512.jpg` huérfano de 421 KB.
+## 2.7 ⚠️ Antes de desplegar esta versión
 
----
-
-## 🔧 10 cosas que se PODRÍAN MEJORAR
-
-Estas no son bugs: son decisiones de arquitectura que hoy funcionan pero limitan
-el crecimiento. Las tres primeras son las que más rinden.
-
-1. **Mover las fotos a Firebase Storage.** Hoy la evidencia se guarda como base64
-   dentro del documento. Firestore tiene un límite duro de **1 MiB por documento**,
-   y —peor— cada `onSnapshot` vuelve a descargar *todas* las imágenes de *todas*
-   las órdenes. Con 100 equipos con foto son varios MB por refresco. El bucket ya
-   está configurado en el proyecto y sin usar. *(Mitigado: se añadió un bucle de
-   compresión que garantiza quedar bajo el límite, pero la solución correcta es
-   Storage.)*
-2. **Paginación real** en lugar de `limit(500)` fijo. Carga incremental con
-   `startAfter()` y scroll infinito, o filtro por rango de fechas.
-3. **Probar las reglas de seguridad automáticamente** con el emulador de Firestore
-   y `@firebase/rules-unit-testing`. Hoy `firestore.rules` está versionado y
-   revisado, pero no ejercitado por el CI.
-4. **Auto-hospedar las dependencias o firmarlas con SRI.** Se fijaron versiones
-   exactas y se precachean, pero un CDN comprometido aún podría ejecutar código
-   arbitrario en una página que maneja datos personales. Lo ideal:
-   `app/vendor/` servido desde el propio origen y CSP `script-src 'self'`.
-5. **No guardar el PIN en claro.** Opciones, de menor a mayor esfuerzo: borrarlo
-   automáticamente al entregar el equipo; cifrarlo con una clave derivada de la
-   contraseña del técnico; o no pedirlo y usar el modo de reparación del fabricante.
-6. **Generar el QR en el navegador.** Hoy se construye con `api.qrserver.com`, lo
-   que envía la URL de cada orden a un tercero y falla sin internet. Una librería
-   local de ~5 KB lo resuelve. *(Mitigado: el ticket ahora imprime la URL como
-   texto de respaldo si el QR no carga.)*
-7. **Historial de estados (auditoría).** Solo se guarda el estado actual. Un
-   subdocumento `historial` con `{estado, timestamp, usuario}` permitiría medir
-   tiempos de reparación, detectar cuellos de botella y resolver disputas.
-8. **Optimizar los binarios.** `icon-512.png` pesa 1 MB y `logo.jpg` 500 KB para
-   mostrarse a 80×80. Convertidos a WebP y redimensionados serían ~30 KB en total,
-   y hoy se precachean íntegros en el service worker.
-9. **Gestión de usuarios y recuperación de contraseña.** No hay "olvidé mi
-   contraseña", ni alta de usuarios, ni roles (dueño / técnico / recepción). Con
-   `sendPasswordResetEmail` y custom claims se cubre con poco código.
-10. **Borrado lógico y exportación.** "Borrar" es permanente e irreversible sobre
-    un documento legal/contable. Una papelera (`archivado: true`) con purga a los
-    N días, más exportación a CSV/PDF para la contabilidad, sería más seguro.
-
----
-
-## 🔁 El ciclo de corrección
-
-La corrección no se hizo "a ojo": primero se construyó un arnés que convirtiera
-cada hallazgo en una comprobación ejecutable, y luego se iteró hasta dejarlo todo
-en verde.
-
-**Herramientas creadas**
-
-- `tools/audit.mjs` — auditoría estática con 12 familias de comprobaciones
-  (sincronía CSS↔JS, consultas sin filtro por `uid`, lectura de colecciones
-  privadas desde páginas públicas, reglas abiertas, escapado, service worker,
-  URLs hardcodeadas, fuga de listeners, tabnabbing, accesibilidad, higiene).
-- `tests/` — 28 tests sobre `jsdom` con un **doble de Firestore en memoria**
-  (consultas, `onSnapshot`, lotes atómicos) y de Auth y SweetAlert2, que ejecutan
-  el `app.js` y el `status.js` reales.
-- `dev/preview.html` — banco de pruebas visual de las tarjetas, sin credenciales.
-- `.github/workflows/calidad.yml` — ejecuta las tres cosas en cada push y PR.
-
-**Iteraciones**
-
-| Ronda | Foco | Auditoría | Tests |
-|-------|------|-----------|-------|
-| 0 | Línea base (código original) | 14 errores, 12 avisos | 3 / 27 |
-| 1 | Seguridad: reglas, índices, cabeceras HTTP, CSP | 14 → 11 errores | 3 / 27 |
-| 2 | `app.js`: aislamiento por `uid`, espejo público, escapado, firma, validaciones, listeners | 11 → 6 errores | 3 → 21 / 27 |
-| 3 | HTML, service worker, página pública, accesibilidad | 6 → 3 errores | 21 → 26 / 27 |
-| 4 | CSS sincronizado con el JS | 3 → 3 errores | 26 → 27 / 28 |
-| 5 | Falsos positivos de la propia auditoría y del test de XSS | 3 → 0 errores | 28 / 28 |
-| 6 | Pulido: orden de `prepararCanvas`, migración de datos, manifest, limpieza | **0 errores, 0 avisos** | **28 / 28** |
-
-Un detalle del ciclo que vale la pena: el test *"un cliente con comillas no rompe
-el atributo de la tarjeta"* falló incluso con el código ya corregido. No era una
-regresión — el test buscaba la cadena `onmouseover=` en el `innerHTML`, y el dato
-hostil aparecía ahí legítimamente **como texto**. Se reescribió para comprobar la
-propiedad real (que ningún elemento haya ganado un atributo `on*`), que es lo que
-importa.
-
----
-
-## ⚠️ Antes de desplegar
-
-1. **Ejecuta la migración** con la app abierta y sesión iniciada, **antes** de
-   publicar las reglas nuevas:
-   ```js
-   await TechFix.migrar()
-   ```
-   Rellena el `uid` que falte en órdenes antiguas (con las reglas nuevas quedarían
-   inaccesibles para siempre) y crea el espejo `seguimiento` de cada una, para que
-   los QR ya impresos sigan funcionando.
-2. **Publica reglas e índices** — el workflow de GitHub solo despliega hosting:
+1. **Publica reglas e índices** (los workflows de GitHub solo despliegan hosting):
    ```bash
    firebase deploy --only firestore:rules,firestore:indexes
    ```
-   Sin el índice compuesto (`uid` + `timestamp desc`) la lista no carga; la app
-   detecta ese caso y lo avisa explícitamente.
-3. **Rota el PIN de los equipos que estén hoy en el taller** si la base estuvo
-   accesible públicamente. Los PIN ya expuestos deben considerarse comprometidos.
+2. **Las órdenes nuevas escriben campos nuevos** (`idOrden`, `historial`,
+   `fechaReparacion`, `fechaEntrega`). Las antiguas siguen funcionando: la app las
+   tolera y la migración existente (`await TechFix.migrar()`) sigue siendo la
+   recomendada una sola vez.
+3. **Sube la `VERSION` de `app/sw.js`** en cada despliegue de archivos cacheables
+   (ahora `v5`). Los clientes activos reciben el aviso "Versión nueva
+   disponible" y recargan.
+4. **Revisa la CSP publicada**: ya no permite scripts de terceros. Si algún día
+   añades un servicio externo, actualiza `connect-src`/`img-src` de forma
+   consciente, no con un comodín.
+
+## 2.8 ⚪ Mejoras de fondo que siguen pendientes (documentadas, no urgentes)
+
+1. **Mover fotos y firmas a Firebase Storage.** Hoy son base64 dentro del
+   documento: Firestore limita a 1 MiB por documento y cada `onSnapshot` vuelve a
+   descargar todas las imágenes. El bucket ya está configurado y sin usar.
+2. **Paginación real** en lugar de `limit(500)` (carga incremental con
+   `startAfter()` o filtro por rango de fechas).
+3. **Probar las reglas con el emulador** (`@firebase/rules-unit-testing`). Hoy hay
+   8 comprobaciones estáticas sobre `firestore.rules`, pero no se ejecutan contra
+   un emulador real.
+4. **No guardar el PIN en claro** (borrarlo al entregar, cifrarlo o eliminarlo y
+   usar el modo de reparación del fabricante).
+5. **Roles y multi-usuario** (dueño / técnico / recepción) con *custom claims*.
+6. **Borrado lógico** (papelera) en lugar del borrado definitivo actual sobre un
+   documento con valor legal y contable.
+7. **Historial visible en la UI**: los datos ya se guardan (`historial`), falta la
+   línea de tiempo interna y las métricas de tiempo por estado.

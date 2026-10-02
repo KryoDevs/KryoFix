@@ -28,11 +28,7 @@ jobs:
       - name: Instalar dependencias de desarrollo
         run: npm ci
 
-      - name: ESLint
-        run: npm run lint
-
-      - name: Auditoria estatica (seguridad y regresiones conocidas)
-        run: npm run audit:static
-
-      - name: Tests (jsdom)
-        run: npm test
+      # Un unico comando para que el CI y el desarrollador ejecuten exactamente
+      # lo mismo: eslint + auditoria estatica + tests (67).
+      - name: Verificacion completa
+        run: npm run check

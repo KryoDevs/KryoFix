@@ -2,7 +2,9 @@ import js from '@eslint/js';
 
 export default [
     {
-        ignores: ['node_modules/**', '.firebase/**']
+        // app/vendor/ son dependencias de terceros copiadas tal cual: no se
+        // revisan con las reglas del proyecto (ni se corrigen a mano).
+        ignores: ['node_modules/**', '.firebase/**', 'app/vendor/**']
     },
     js.configs.recommended,
     {
@@ -25,6 +27,9 @@ export default [
                 self: 'readonly',
                 Image: 'readonly',
                 FileReader: 'readonly',
+                Blob: 'readonly',
+                File: 'readonly',
+                FormData: 'readonly',
                 Intl: 'readonly',
                 URLSearchParams: 'readonly',
                 URL: 'readonly',

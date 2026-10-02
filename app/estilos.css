@@ -67,6 +67,18 @@ body {
 .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
 .texto-ayuda { color: var(--text-muted); font-size: 14px; margin-top: 0; }
 
+/* Aviso de arranque fallido (librerias no disponibles) */
+.aviso-dependencias {
+    max-width: 620px;
+    margin: 24px auto;
+    text-align: left;
+    border-left: 6px solid var(--danger);
+}
+.aviso-dependencias h2 { margin-top: 0; font-size: 1.1rem; color: var(--danger); }
+
+/* Etiquetas de los campos del modal de cambio de contrasena */
+.etiqueta-modal { display: block; text-align: left; margin-top: 8px; }
+
 /* ---------------------------------------------------------------- Login -- */
 .login-wrapper {
     display: flex; justify-content: center; align-items: center;
@@ -131,6 +143,18 @@ body {
 .btn-neon:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -10px rgba(139, 92, 246, 0.7); }
 .btn-neon:disabled { opacity: 0.6; cursor: progress; transform: none; }
 .login-footer { margin-top: 25px; font-size: 12px; color: #94a3b8; }
+.enlace-login {
+    display: block;
+    margin: 14px auto 0;
+    background: none;
+    border: none;
+    color: #93c5fd;
+    font-size: 13px;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 6px;
+}
+.enlace-login:hover { color: #bfdbfe; }
 
 /* --------------------------------------------------------------- Topbar -- */
 .topbar {
@@ -151,6 +175,8 @@ body {
 }
 .btn-icon:hover { background: var(--input-bg); border-color: var(--primary); }
 .btn-icon.activo { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-exportar { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-exportar:hover { background: var(--primary-hover); color: #fff; }
 .btn-outline-danger { color: var(--danger); border-color: var(--danger); }
 .btn-outline-danger:hover { background: var(--danger); color: #fff; }
 .btn-mini {
@@ -159,7 +185,20 @@ body {
     background: var(--input-bg); color: var(--text-main);
 }
 
-/* ------------------------------------------------------------ Dashboard -- */
+/* Aviso de equipos listos esperando al cliente */
+.aviso-bloque {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 6px solid #f59e0b;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+}
+[data-theme="dark"] .aviso-bloque { background: #422006; border-color: #b45309; }
+.aviso-bloque p { margin: 6px 0; }
+.aviso-titulo { font-weight: 700; }
+
+/* Dashboard */
 .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
 .stat-card { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; box-shadow: var(--shadow); }
 .stat-card h3 { margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -190,6 +229,8 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
 .campo-libre { margin-top: 8px; }
+/* Campo con un valor invalido: evita el aviso tardio de "no se pudo guardar" */
+.campo-invalido { border-color: var(--danger) !important; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
 .input-archivo { background: transparent; border: 1px dashed var(--border-color); padding: 10px; }
 .preview-foto { margin-top: 10px; }
 .preview-foto img { max-width: 100%; max-height: 160px; height: auto; border-radius: 8px; border: 1px solid var(--border-color); }
@@ -208,9 +249,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 /* -------------------------------------------------------------- Filtros -- */
 .header-registros { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 15px; }
 .header-registros h2 { margin: 0; }
-.controles-busqueda { display: flex; gap: 10px; flex-wrap: wrap; }
+.controles-busqueda { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 #buscador { flex: 2 1 220px; }
 #filtro-estado { flex: 1 1 160px; }
+.controles-catalogo { margin-bottom: 20px; }
+#cat-buscador { flex: 1 1 260px; }
 .sin-resultados { text-align: center; color: var(--text-muted); font-style: italic; grid-column: 1 / -1; padding: 40px 10px; }
 
 /* ------------------------------------------------------------- Tarjetas -- */
@@ -246,6 +289,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .estado-reparado  { background: #dcfce7; color: #166534; border-color: #86efac; }
 .estado-entregado { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
 
+/* Orden que lleva demasiado tiempo en el taller */
+.badge-espera {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #9a3412;
+    border: 1px solid #fdba74;
+    width: fit-content;
+}
+
 .precio { font-weight: bold; color: var(--success); font-size: 16px; margin-top: auto !important; padding-top: 10px; }
 .precio .detalle-extra { font-weight: normal; }
 
@@ -268,6 +325,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .btn-whatsapp { background-color: #25D366; color: #06371b; border-color: #1ea952; }
 .btn-whatsapp:hover { background-color: #1ea952; color: #fff; }
 .btn-imprimir { background-color: var(--input-bg); }
+.btn-compartir { background-color: var(--input-bg); border-color: #8b5cf6; color: #7c3aed; }
+.btn-compartir:hover { background-color: #8b5cf6; color: #fff; }
 .btn-entregar { grid-column: 1 / -1; background-color: var(--input-bg); border-color: var(--success); color: var(--success); }
 .btn-entregar:hover { background-color: var(--success); color: #fff; }
 .btn-eliminar { grid-column: 1 / -1; background-color: transparent; color: var(--danger); border-color: var(--danger); }
@@ -305,13 +364,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 
 /* ------------------------------------------------------- Ticket / print -- */
-.ticket-impresion { display: none; }
+.capa-impresion { display: none; }
 
 @media print {
     body { background-color: #fff; color: #000; padding: 0; margin: 0; }
-    #login-screen, #app-content, .modal-overlay, .swal2-container { display: none !important; }
+    #login-screen, #app-content, #aviso-dependencias, .modal-overlay, .swal2-container { display: none !important; }
 
-    .ticket-impresion { display: block !important; }
+    .capa-impresion { display: block !important; }
     .boleta-pos {
         font-family: 'Courier New', monospace;
         width: 72mm;
@@ -328,6 +387,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
     .boleta-pos p { margin: 3px 0; }
     .boleta-pos .total { font-size: 14px; font-weight: bold; }
     .boleta-qr { text-align: center; }
+    .boleta-qr svg, .boleta-qr img { display: block; margin: 0 auto; }
     .boleta-qr .url-respaldo { font-size: 8px; word-break: break-all; color: #000; margin-top: 2px; }
     .boleta-pos .nota, .boleta-pos .gracias { text-align: center; font-size: 9px; margin-top: 8px; }
 }

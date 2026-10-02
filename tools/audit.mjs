@@ -53,9 +53,13 @@ function clasesUsadas(src) {
     for (const m of src.matchAll(/className\s*=\s*["']([^"']+)["']/g)) {
         m[1].split(/\s+/).filter(Boolean).forEach((c) => out.add(c));
     }
-    // classList.add('a', 'b')
-    for (const m of src.matchAll(/classList\.add\(([^)]*)\)/g)) {
+    // classList.add('a', 'b') y classList.toggle('a', ...)
+    for (const m of src.matchAll(/classList\.(?:add|toggle|remove)\(([^)]*)\)/g)) {
         for (const q of m[1].matchAll(/["']([^"']+)["']/g)) out.add(q[1]);
+    }
+    // el('div', { class: 'a b' })  (la fuga mas facil de colar)
+    for (const m of src.matchAll(/class:\s*["']([^"']+)["']/g)) {
+        m[1].split(/\s+/).filter(Boolean).forEach((c) => out.add(c));
     }
     return out;
 }
@@ -69,13 +73,39 @@ function clasesDefinidas(sheet) {
     return out;
 }
 
-const usadas = new Set([...clasesUsadas(appJs), ...clasesUsadas(indexHtml)]);
+// Los prefijos dinamicos ("estado-" + p.estado) no son clases completas: la
+// comprobacion se hace sobre las clases terminadas.
+const completas = (conjunto) => new Set([...conjunto].filter((c) => c && !c.endsWith('-')));
+const usadas = new Set([...completas(clasesUsadas(appJs)), ...completas(clasesUsadas(indexHtml))]);
 const definidas = clasesDefinidas(css);
 // Clases que vienen de librerias externas o son puramente semanticas
 const IGNORAR = new Set(['swal2-popup', 'swal2-container']);
 const huerfanas = [...usadas].filter((c) => !definidas.has(c) && !IGNORAR.has(c)).sort();
 if (huerfanas.length) {
     fail('css-sync', `Clases usadas en JS/HTML sin definicion en estilos.css: ${huerfanas.join(', ')}`);
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Codificacion de los archivos de texto
+// Un archivo guardado en latin-1 (Windows) rompe los acentos y los emoji: en
+// index.html convivian "reparaci\u00f3n" en latin-1 con emoji UTF-8, y los
+// iconos del indicador de red y del boton de exportar quedaron como "??".
+// ---------------------------------------------------------------------------
+for (const [nombre, contenido] of [
+    ['app/index.html', indexHtml],
+    ['app/status.html', statusHtml],
+    ['app/app.js', appJsCrudo],
+    ['app/status.js', statusJs],
+    ['app/estilos.css', css]
+]) {
+    if (contenido.includes('\uFFFD')) {
+        fail('encoding', `${nombre} no esta codificado en UTF-8 (contiene caracteres de reemplazo).`);
+    }
+    // "??" dentro de texto visible delata un emoji perdido en una conversion.
+    for (const m of contenido.matchAll(/>(?:[^<>{}]*?)(\?\?)([^<>{}]*?)</g)) {
+        if (/^https?:/.test(m[2] || '')) continue; // URL con query string
+        warn('encoding', `${nombre} tiene "??" en texto visible (emoji perdido): "${m[0].trim().slice(0, 60)}"`);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +155,85 @@ if (rules && !/"firestore"/.test(firebaseJson)) {
 // ---------------------------------------------------------------------------
 for (const h of ['Content-Security-Policy', 'X-Content-Type-Options', 'Referrer-Policy']) {
     if (!firebaseJson.includes(h)) warn('headers', `firebase.json no define la cabecera ${h}.`);
+}
+const csp = (firebaseJson.match(/"Content-Security-Policy",\s*"value":\s*"([^"]+)"/) || [])[1] || '';
+if (csp && /script-src[^;]*'unsafe-(inline|eval)'/.test(csp)) {
+    fail('csp', "La CSP permite 'unsafe-inline'/'unsafe-eval' en script-src: anula la proteccion contra XSS.");
+}
+if (/script-src[^;]*https?:/.test(csp)) {
+    warn('csp', 'La CSP permite scripts de terceros; con las dependencias en vendor/ ya no es necesario.');
+}
+
+// ---------------------------------------------------------------------------
+// 5b. Dependencias: locales, versionadas y presentes
+// ---------------------------------------------------------------------------
+const HTML_CON_SCRIPTS = [['index.html', indexHtml], ['status.html', statusHtml]];
+for (const [nombre, html] of HTML_CON_SCRIPTS) {
+    for (const m of html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)) {
+        const src = m[1];
+        if (/^https?:\/\//.test(src)) {
+            fail('cdn', `${nombre} carga ${src} desde un CDN: un CDN caido o comprometido deja la app inservible. Sirvelo desde app/vendor/.`);
+        } else if (!existsSync(join(ROOT, 'app', src.replace(/^\.\//, '')))) {
+            fail('script-missing', `${nombre} referencia ${src}, que no existe en app/.`);
+        }
+    }
+}
+// app.js lleva su codigo dentro (el contenedor existe en index.html) y lo mismo
+// status.js: si el codigo se moviera a un archivo que no se carga, la app
+// quedaria vacia sin ningun error visible.
+for (const [nombre, html, contenedor, script] of [
+    ['index.html', indexHtml, 'app.js', 'app.js'],
+    ['status.html', statusHtml, 'status.js', 'status.js']
+]) {
+    const tieneContenedor = new RegExp(`id=["']${contenedor}["']`).test(html);
+    const loCarga = html.includes(script) || html.includes('suelto');
+    if (!tieneContenedor && !loCarga) {
+        fail('script-missing', `${nombre} no incluye ${script}: la interfaz quedaria vacia.`);
+    }
+}
+for (const m of [...(indexHtml + statusHtml + appJs).matchAll(/https?:\/\/[^\s"'`)]*qrserver[^\s"'`)]*/g)]) {
+    void m;
+    fail('qr-externo', 'Se sigue usando api.qrserver.com: filtra la URL de cada orden a un tercero y falla sin internet. Usa el QR local.');
+}
+// El QR del ticket debe ser un archivo propio versionado.
+if (/ticket-qr\.png/.test(appJs) && !existsSync(join(ROOT, 'app', 'ticket-qr.png'))) {
+    fail('qr-missing', 'app.js usa ticket-qr.png pero el archivo no existe. Ejecuta: npm run qr');
+}
+if (!/vendor\//.test(swJs)) {
+    warn('sw-vendor', 'El service worker no precachea app/vendor/: la app no funcionara sin conexion.');
+}
+
+// ---------------------------------------------------------------------------
+// 5c. Compatibilidad del SDK de Firestore
+// firebase 10.8.1 (compat) no expone count()/agregaciones: intentar usarlas
+// compila, pero falla en tiempo de ejecucion.
+// ---------------------------------------------------------------------------
+if (/\.count\(\s*\)/.test(appJs)) {
+    fail('sdk-count', 'Se usa Query.count(), que no existe en firebase 10.8.1 compat (0.3.26).');
+}
+
+// ---------------------------------------------------------------------------
+// 5d. Ids del DOM referenciados desde el JavaScript
+// Un id mal escrito ($('proyecto-form') cuando el HTML dice otra cosa) no da
+// error: simplemente deja una funcion muerta. Se comprueba en ambas paginas.
+// ---------------------------------------------------------------------------
+const IDS_DINAMICOS = new Set(['pwd-nueva', 'pwd-repetir']); // los crea SweetAlert2
+for (const [nombreJs, src, nombreHtml, html] of [
+    ['app.js', appJs, 'index.html', indexHtml],
+    ['status.js', statusJs, 'status.html', statusHtml]
+]) {
+    const ids = new Set([
+        ...[...src.matchAll(/\$\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]),
+        ...[...src.matchAll(/escuchar\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]),
+        ...[...src.matchAll(/getElementById\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1])
+    ]);
+    const inexistentes = [...ids].filter((id) => !IDS_DINAMICOS.has(id) && !html.includes(`id="${id}"`)).sort();
+    if (inexistentes.length) {
+        fail(
+            'dom-ids',
+            `${nombreJs} usa id(s) que no existen en ${nombreHtml}: ${inexistentes.join(', ')}`
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,13 +287,15 @@ if (!/clearPersistence/.test(appJs)) {
 if (/innerHTML\s*\+=/.test(appJs)) {
     warn('perf-innerhtml', 'Uso de innerHTML += dentro de bucles: reparseo O(n^2) del DOM.');
 }
-const llamadasOpen = [...appJs.matchAll(/window\.open\([^\n]*/g)].map((m) => m[0]);
+// Se revisa la llamada completa (puede ocupar varias lineas) buscando noopener
+// en sus argumentos.
+const llamadasOpen = [...appJs.matchAll(/window\.open\([\s\S]{0,240}?\);/g)].map((m) => m[0]);
 if (llamadasOpen.some((l) => !l.includes('noopener'))) {
     fail('tabnabbing', "window.open sin 'noopener': la pestana destino puede manipular la original (reverse tabnabbing).");
 }
-if (!/addEventListener\(\s*['"]input['"]/.test(appJs)) {
+if (!/['"]input['"]/.test(appJs)) {
     warn('debounce', 'El buscador no parece tener manejador de input.');
-} else if (!/debounce|setTimeout/.test(appJs)) {
+} else if (!/debounce\s*\(/.test(appJs)) {
     warn('debounce', 'El buscador re-renderiza en cada tecla sin debounce.');
 }
 if (/onclick=/.test(appJs)) {
