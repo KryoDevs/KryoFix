@@ -3,21 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estado de Reparación - TechFix</title>
-    <!-- Firebase Compat SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <title>Estado de tu reparacion - TechFix</title>
+    <meta name="description" content="Consulta en tiempo real el estado de tu equipo en el taller.">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="robots" content="noindex">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <style>
+        :root { color-scheme: dark; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #0f172a;
             color: #f8fafc;
             margin: 0;
-            padding: 0;
+            padding: 20px 0;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            box-sizing: border-box;
         }
         .status-container {
             background: #1e293b;
@@ -29,41 +32,29 @@
             text-align: center;
             border-top: 5px solid #3b82f6;
         }
-        .brand {
-            margin-bottom: 20px;
-        }
-        .brand h2 {
-            margin: 0;
-            color: #3b82f6;
-        }
+        .brand { margin-bottom: 20px; }
+        .brand h1 { margin: 0; color: #3b82f6; font-size: 24px; }
+        .brand p { margin: 5px 0 0 0; font-size: 14px; color: #94a3b8; }
         .device-info {
             background: #0f172a;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 25px;
         }
-        .device-info h3 { margin: 0 0 5px 0; font-size: 18px; }
+        .device-info h2 { margin: 0 0 5px 0; font-size: 18px; }
         .device-info p { margin: 0; color: #94a3b8; font-size: 14px; }
-        
-        .timeline {
-            position: relative;
-            max-width: 250px;
-            margin: 0 auto;
-            text-align: left;
-        }
+
+        .timeline { max-width: 260px; margin: 0 auto; text-align: left; }
         .step {
             display: flex;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             opacity: 0.4;
             transition: opacity 0.3s;
         }
-        .step.active {
-            opacity: 1;
-        }
+        .step.active { opacity: 1; }
         .step-icon {
-            width: 35px;
-            height: 35px;
+            width: 35px; height: 35px;
             border-radius: 50%;
             background: #334155;
             display: flex;
@@ -71,82 +62,74 @@
             align-items: center;
             margin-right: 15px;
             font-size: 16px;
-            z-index: 2;
+            flex: 0 0 auto;
         }
-        .step.active .step-icon {
-            background: #3b82f6;
-            box-shadow: 0 0 15px rgba(59,130,246,0.6);
-        }
-        .step-text {
-            font-weight: bold;
-            font-size: 15px;
-        }
-        
-        .loader {
-            margin: 20px 0;
-            color: #3b82f6;
-            font-weight: bold;
-        }
-        .error-msg {
-            color: #ef4444;
-            font-weight: bold;
-        }
-        .footer {
-            margin-top: 30px;
-            font-size: 12px;
-            color: #64748b;
+        .step.active .step-icon { background: #3b82f6; box-shadow: 0 0 15px rgba(59,130,246,0.6); }
+        .step-text { font-weight: bold; font-size: 15px; }
+
+        .loader { margin: 20px 0; color: #3b82f6; font-weight: bold; }
+        .error-msg { color: #fca5a5; font-weight: bold; line-height: 1.5; }
+        .aviso-listo { color: #10b981; font-weight: bold; margin-top: 20px; }
+        .footer { margin-top: 30px; font-size: 12px; color: #64748b; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .step { transition: none; }
         }
     </style>
 </head>
 <body>
 
-    <div class="status-container">
+    <main class="status-container">
         <div class="brand">
-            <h2>🔧 TechFix Tracker</h2>
-            <p style="margin:5px 0 0 0; font-size:14px; color:#94a3b8;">Seguimiento de Reparación</p>
+            <h1>🔧 TechFix Tracker</h1>
+            <p>Seguimiento de reparacion</p>
         </div>
 
-        <div id="loader" class="loader">Buscando tu equipo...</div>
+        <p id="loader" class="loader" role="status">Buscando tu equipo...</p>
 
         <div id="content" style="display: none;">
             <div class="device-info">
-                <h3 id="lbl-modelo">Modelo</h3>
-                <p>Nº de Orden: <span id="lbl-id"></span></p>
+                <h2 id="lbl-modelo">Modelo</h2>
+                <p>N&ordm; de orden: <span id="lbl-id"></span></p>
             </div>
 
-            <div class="timeline">
-                <div class="step" id="step-ingresado">
-                    <div class="step-icon">📥</div>
-                    <div class="step-text">Ingresado al taller</div>
-                </div>
-                <div class="step" id="step-revision">
-                    <div class="step-icon">🔍</div>
-                    <div class="step-text">En revisión técnica</div>
-                </div>
-                <div class="step" id="step-repuesto">
-                    <div class="step-icon">⏳</div>
-                    <div class="step-text">Esperando repuestos</div>
-                </div>
-                <div class="step" id="step-reparado">
-                    <div class="step-icon">✅</div>
-                    <div class="step-text">¡Listo para retirar!</div>
-                </div>
-            </div>
-            
-            <p id="msg-reparado" style="display:none; color:#10b981; font-weight:bold; margin-top:20px;">
-                ¡Tu equipo ya está listo! Te esperamos en nuestro local para la entrega.
+            <ol class="timeline" aria-label="Avance de la reparacion">
+                <li class="step" id="step-ingresado">
+                    <span class="step-icon" aria-hidden="true">📥</span>
+                    <span class="step-text">Ingresado al taller</span>
+                </li>
+                <li class="step" id="step-revision">
+                    <span class="step-icon" aria-hidden="true">🔍</span>
+                    <span class="step-text">En revision tecnica</span>
+                </li>
+                <li class="step" id="step-repuesto">
+                    <span class="step-icon" aria-hidden="true">⏳</span>
+                    <span class="step-text">Esperando repuestos</span>
+                </li>
+                <li class="step" id="step-reparado">
+                    <span class="step-icon" aria-hidden="true">✅</span>
+                    <span class="step-text">Listo para retirar</span>
+                </li>
+                <li class="step" id="step-entregado">
+                    <span class="step-icon" aria-hidden="true">📦</span>
+                    <span class="step-text">Entregado</span>
+                </li>
+            </ol>
+
+            <p id="msg-reparado" class="aviso-listo" style="display:none;">
+                Tu equipo ya esta listo. Te esperamos en nuestro local para la entrega.
             </p>
         </div>
 
-        <div id="error" class="error-msg" style="display: none;">
-            No se encontró el equipo. Por favor, verifica el código QR.
-        </div>
-        
-        <div class="footer">
-            Sistema de consulta automática
-        </div>
-    </div>
+        <p id="error" class="error-msg" style="display: none;">
+            No se encontro el equipo. Por favor, verifica el codigo QR.
+        </p>
 
-    <script src="status.js"></script>
+        <p class="footer">Sistema de consulta automatica</p>
+    </main>
+
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js" crossorigin="anonymous"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+    <script defer src="status.js"></script>
 </body>
 </html>
