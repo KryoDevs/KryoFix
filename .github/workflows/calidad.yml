@@ -1,0 +1,38 @@
+name: Calidad (lint + auditoria + tests)
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.19 es el minimo que pide jsdom; 22 es la LTS actual.
+        node-version: ['20.19', '22']
+
+    name: Node ${{ matrix.node-version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Instalar dependencias de desarrollo
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Auditoria estatica (seguridad y regresiones conocidas)
+        run: npm run audit:static
+
+      - name: Tests (jsdom)
+        run: npm test

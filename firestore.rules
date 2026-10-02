@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// =============================================================================
+// Reglas de seguridad de TechFix Tracker
+//
+// Modelo de datos:
+//   equipos/{id}      -> datos privados de la orden (cliente, telefono, IMEI,
+//                        PIN, fotos, firma). SOLO el tecnico dueno puede verlos.
+//   catalogo/{id}     -> precios del tecnico. Privado por dueno.
+//   seguimiento/{id}  -> espejo PUBLICO minimo (estado + modelo) que alimenta
+//                        la pagina status.html del codigo QR. Nunca debe
+//                        contener datos personales.
+//
+// Despliegue:  firebase deploy --only firestore:rules,firestore:indexes
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    // El documento existente pertenece a quien hace la peticion.
+    function esDueno() {
+      return autenticado() && resource.data.uid == request.auth.uid;
+    }
+
+    // El documento entrante se auto-asigna al autor (no se puede suplantar uid).
+    function seAutoAsigna() {
+      return autenticado() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Impide que un update cambie el propietario del documento.
+    function mantieneDueno() {
+      return request.resource.data.uid == resource.data.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Ordenes de reparacion: estrictamente privadas por tecnico.
+    // -------------------------------------------------------------------------
+    match /equipos/{equipoId} {
+      allow read:   if esDueno();
+      allow create: if seAutoAsigna()
+                    && request.resource.data.cliente is string
+                    && request.resource.data.cliente.size() > 0
+                    && request.resource.data.cliente.size() <= 120
+                    && request.resource.data.costo is number
+                    && request.resource.data.costo >= 0
+                    && request.resource.data.abono is number
+                    && request.resource.data.abono >= 0
+                    && request.resource.data.abono <= request.resource.data.costo;
+      allow update: if esDueno() && seAutoAsigna() && mantieneDueno();
+      allow delete: if esDueno();
+    }
+
+    // -------------------------------------------------------------------------
+    // Catalogo de precios: privado por tecnico.
+    // -------------------------------------------------------------------------
+    match /catalogo/{itemId} {
+      allow read:   if esDueno();
+      allow create: if seAutoAsigna()
+                    && request.resource.data.precio is number
+                    && request.resource.data.precio >= 0;
+      allow update: if esDueno() && seAutoAsigna() && mantieneDueno();
+      allow delete: if esDueno();
+    }
+
+    // -------------------------------------------------------------------------
+    // Espejo publico para el QR del ticket.
+    // Lectura anonima permitida, pero el contenido esta restringido por regla:
+    // solo se aceptan estos 4 campos, de modo que es imposible publicar por
+    // error el telefono, el IMEI, el PIN, la foto o la firma del cliente.
+    // -------------------------------------------------------------------------
+    match /seguimiento/{equipoId} {
+      function formaValida() {
+        return request.resource.data.keys().hasOnly(['uid', 'estado', 'modelo', 'actualizado'])
+               && request.resource.data.estado in ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado']
+               && request.resource.data.modelo is string
+               && request.resource.data.modelo.size() <= 80;
+      }
+
+      allow read:   if true;
+      allow create: if seAutoAsigna() && formaValida();
+      allow update: if esDueno() && seAutoAsigna() && mantieneDueno() && formaValida();
+      allow delete: if esDueno();
+    }
+
+    // -------------------------------------------------------------------------
+    // Todo lo demas queda cerrado.
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

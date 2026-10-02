@@ -1,17 +1,28 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="light">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TechFix Tracker Pro</title>
+    <meta name="description" content="Sistema de gestion para servicio tecnico de equipos y smartphones.">
+
+    <!-- Aplica el tema guardado antes del primer pintado (evita el destello) -->
+    <script src="tema.js"></script>
+
     <link rel="stylesheet" href="estilos.css">
-    <!-- SweetAlert2 para notificaciones bonitas -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
+
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
     <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- Dependencias externas con version EXACTA (nunca rangos como @11) -->
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js" crossorigin="anonymous"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+    <script defer src="app.js"></script>
 </head>
 <body>
 
@@ -19,79 +30,78 @@
     <div id="login-screen" class="login-wrapper">
         <div class="login-glass-panel">
             <div class="login-brand">
-                <img src="logo.jpg" alt="TechFix Logo" class="brand-logo-login icon-pulse">
-                <h2>TechFix Pro</h2>
-                <p>Portal del Técnico</p>
+                <img src="logo.jpg" alt="" class="brand-logo-login icon-pulse" width="80" height="80">
+                <h1>TechFix Pro</h1>
+                <p>Portal del Tecnico</p>
             </div>
             <form id="login-form" class="modern-form">
                 <div class="input-group">
-                    <span class="icon">📧</span>
-                    <input type="email" id="login-email" placeholder="Correo electrónico" required autocomplete="email">
+                    <span class="icon" aria-hidden="true">📧</span>
+                    <label class="sr-only" for="login-email">Correo electronico</label>
+                    <input type="email" id="login-email" placeholder="Correo electronico" required autocomplete="email">
                 </div>
                 <div class="input-group">
-                    <span class="icon">🔒</span>
-                    <input type="password" id="login-password" placeholder="Contraseña" required autocomplete="current-password">
+                    <span class="icon" aria-hidden="true">🔒</span>
+                    <label class="sr-only" for="login-password">Contrasena</label>
+                    <input type="password" id="login-password" placeholder="Contrasena" required autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn-neon">Ingresar al Sistema</button>
             </form>
-            <div class="login-footer">Sistema de gestión seguro</div>
+            <p class="login-footer">Sistema de gestion seguro</p>
         </div>
     </div>
 
-    <!-- APLICACIÓN PRINCIPAL (Oculta hasta iniciar sesión) -->
+    <!-- APLICACION PRINCIPAL (oculta hasta iniciar sesion) -->
     <div id="app-content" class="container" style="display: none;">
-        
-        <!-- Header / Topbar -->
+
         <header class="topbar">
             <div class="logo-area">
-                <img src="logo.jpg" alt="TechFix Logo" class="brand-logo-topbar">
+                <img src="logo.jpg" alt="" class="brand-logo-topbar" width="40" height="40">
                 <h1>TechFix Tracker Pro</h1>
             </div>
-            <div class="user-actions">
+            <nav class="user-actions" aria-label="Acciones de usuario">
                 <span id="user-email-display" class="user-email"></span>
-                <button id="btn-nav-taller" class="btn-icon" style="background: var(--primary); color: white;">🏠 Taller</button>
-                <button id="btn-nav-catalogo" class="btn-icon">📚 Catálogo</button>
-                <button id="btn-theme" class="btn-icon">🌙 Modo</button>
-                <button id="btn-logout" class="btn-icon btn-outline-danger">🚪 Salir</button>
-            </div>
+                <button type="button" id="btn-nav-taller" class="btn-icon activo" aria-current="page">🏠 Taller</button>
+                <button type="button" id="btn-nav-catalogo" class="btn-icon" aria-current="false">📚 Catalogo</button>
+                <button type="button" id="btn-theme" class="btn-icon" aria-pressed="false">🌙 Modo Oscuro</button>
+                <button type="button" id="btn-logout" class="btn-icon btn-outline-danger">🚪 Salir</button>
+            </nav>
         </header>
 
+        <main>
         <!-- VISTA: TALLER -->
-        <div id="vista-taller">
-            <!-- Dashboard Estadísticas -->
+        <section id="vista-taller" aria-label="Taller">
             <div class="dashboard">
                 <div class="stat-card">
                     <h3>Equipos Activos</h3>
-                    <h2 id="stat-activos">0</h2>
+                    <p id="stat-activos" class="stat-valor">0</p>
                 </div>
                 <div class="stat-card">
                     <h3>Reparados (Mes)</h3>
-                    <h2 id="stat-reparados">0</h2>
+                    <p id="stat-reparados" class="stat-valor">0</p>
                 </div>
                 <div class="stat-card stat-money">
-                    <h3>Ingresos Estimados</h3>
-                    <h2 id="stat-ingresos">$0</h2>
+                    <h3>Ingresos del Mes</h3>
+                    <p id="stat-ingresos" class="stat-valor">$0</p>
                 </div>
             </div>
 
             <div class="panel-ingreso">
-                <h3>📝 Nuevo Ingreso Inteligente</h3>
+                <h2>📝 Nuevo Ingreso</h2>
 
-                <form id="proyecto-form">
-                    <!-- Fila 1: Cliente -->
+                <form id="proyecto-form" novalidate>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="cliente">Nombre del Cliente:</label>
-                            <input type="text" id="cliente" placeholder="Ej. Juan Pérez" required>
+                            <input type="text" id="cliente" placeholder="Ej. Juan Perez" required maxlength="120" autocomplete="name">
                         </div>
                         <div class="form-group">
-                            <label for="telefono">Teléfono (WhatsApp):</label>
-                            <input type="tel" id="telefono" placeholder="56912345678" required>
-                            <small>Solo números (con código de país ej: 56 para Chile)</small>
+                            <label for="telefono">Telefono (WhatsApp):</label>
+                            <input type="tel" id="telefono" placeholder="56912345678" required inputmode="numeric" autocomplete="tel">
+                            <small>Con codigo de pais, solo numeros (56 para Chile).</small>
                         </div>
                     </div>
 
-                    <!-- Fila 2: Equipo con Autocompletado del Catálogo -->
                     <div class="form-row">
                         <div class="form-group">
                             <label for="marca">Marca:</label>
@@ -104,75 +114,76 @@
                                 <option value="Huawei">Huawei</option>
                                 <option value="Otro">Otro...</option>
                             </select>
+                            <input type="text" id="marca-otro" class="campo-libre" placeholder="Escribe la marca" maxlength="60" hidden disabled>
                         </div>
                         <div class="form-group">
                             <label for="modelo">Modelo:</label>
                             <select id="modelo" required disabled>
                                 <option value="">-- Selecciona Marca Primero --</option>
                             </select>
+                            <input type="text" id="modelo-otro" class="campo-libre" placeholder="Escribe el modelo" maxlength="80" hidden disabled>
                         </div>
                     </div>
 
-                    <!-- Fila 3: Datos Técnicos -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="imei">IMEI / Número de Serie (Opcional):</label>
-                            <input type="text" id="imei" placeholder="Ej. 354890123...">
+                            <label for="imei">IMEI / Numero de Serie (opcional):</label>
+                            <input type="text" id="imei" placeholder="Ej. 354890123..." maxlength="40" autocomplete="off">
                         </div>
                         <div class="form-group">
-                            <label for="pin">Contraseña / PIN del equipo:</label>
-                            <input type="text" id="pin" placeholder="Ej. 1234 o Patrón Z">
+                            <label for="pin">Contrasena / PIN del equipo:</label>
+                            <input type="text" id="pin" placeholder="Ej. 1234 o Patron Z" maxlength="40" autocomplete="off">
+                            <small>Se guarda oculto en la ficha y nunca se imprime ni se publica.</small>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="accesorios">Condición y Accesorios (Golpes, cargador, etc):</label>
-                        <input type="text" id="accesorios" placeholder="Ej. Pantalla trizada, trae funda y cargador...">
+                        <label for="accesorios">Condicion y accesorios (golpes, cargador, etc.):</label>
+                        <input type="text" id="accesorios" placeholder="Ej. Pantalla trizada, trae funda y cargador..." maxlength="200">
                     </div>
 
-                    <!-- Reparación Inteligente -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="tipo-reparacion">Reparación Solicitada:</label>
-                            <select id="tipo-reparacion" required disabled>
+                            <label for="tipo-reparacion">Reparacion solicitada:</label>
+                            <select id="tipo-reparacion" disabled>
                                 <option value="">-- Selecciona Modelo Primero --</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="falla">Detalle de falla (Opcional):</label>
-                            <input type="text" id="falla" placeholder="Ej. Se mojó ayer, no carga...">
+                            <label for="falla">Detalle de la falla (opcional):</label>
+                            <input type="text" id="falla" placeholder="Ej. Se mojo ayer, no carga..." maxlength="200">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="foto-evidencia">📷 Fotografías de Evidencia (Opcional):</label>
-                        <input type="file" id="foto-evidencia" accept="image/*" capture="environment" style="background: transparent; border: none; padding: 0;">
-                        <small>Se guardará una copia comprimida para ahorrar espacio.</small>
-                        <div id="preview-foto" style="margin-top: 10px; display: none;">
-                            <img id="img-evidencia-preview" src="" alt="Previsualización" style="max-width: 100%; height: auto; max-height: 150px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <label for="foto-evidencia">📷 Fotografia de evidencia (opcional):</label>
+                        <input type="file" id="foto-evidencia" class="input-archivo" accept="image/*" capture="environment">
+                        <small>Se guarda una copia comprimida para ahorrar espacio.</small>
+                        <div id="preview-foto" class="preview-foto" style="display: none;">
+                            <img id="img-evidencia-preview" src="" alt="Previsualizacion de la evidencia">
                         </div>
                     </div>
 
-                    <!-- Fila 4: Dinero y Estado -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="estado">Estado Inicial:</label>
+                            <label for="estado">Estado inicial:</label>
                             <select id="estado" required>
                                 <option value="ingresado">📥 Ingresado</option>
-                                <option value="revision">🔍 En Revisión</option>
+                                <option value="revision">🔍 En Revision</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="costo">Presupuesto / Costo Total ($):</label>
-                            <input type="number" id="costo" placeholder="0 si aún no hay presupuesto" required>
+                            <label for="costo">Presupuesto / costo total ($):</label>
+                            <input type="number" id="costo" placeholder="0 si aun no hay presupuesto" required min="0" step="1" inputmode="numeric" value="0">
                         </div>
                         <div class="form-group">
-                            <label for="abono">Abono Inicial ($):</label>
-                            <input type="number" id="abono" placeholder="0">
+                            <label for="abono">Abono inicial ($):</label>
+                            <input type="number" id="abono" placeholder="0" min="0" step="1" inputmode="numeric">
+                            <small>No puede superar el presupuesto.</small>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn-guardar">💾 Guardar y Generar Ticket</button>
+                    <button type="submit" class="btn-guardar">💾 Guardar y generar ticket</button>
                 </form>
             </div>
 
@@ -180,87 +191,80 @@
                 <div class="header-registros">
                     <h2>📋 Equipos en Taller</h2>
                     <div class="controles-busqueda">
-                        <input type="text" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
+                        <label class="sr-only" for="buscador">Buscar equipos</label>
+                        <input type="search" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
+                        <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
-                            <option value="activos">Sólo Activos en Taller</option>
-                            <option value="todos">Ver Historial Completo</option>
+                            <option value="activos">Solo activos en taller</option>
+                            <option value="todos">Ver historial completo</option>
                             <option value="ingresado">📥 Ingresados</option>
-                            <option value="revision">🔍 En Revisión</option>
-                            <option value="repuesto">⏳ Esperando Repuesto</option>
-                            <option value="reparado">✅ Listos para Entregar</option>
+                            <option value="revision">🔍 En revision</option>
+                            <option value="repuesto">⏳ Esperando repuesto</option>
+                            <option value="reparado">✅ Listos para entregar</option>
                             <option value="entregado">📦 Entregados</option>
                         </select>
                     </div>
                 </div>
-                
-                <div id="loader" class="loader" style="display: none;">Cargando base de datos...</div>
-                <div id="lista-proyectos" class="grid-proyectos">
-                    <!-- Tarjetas dinámicas -->
-                </div>
-            </div>
-        </div>
 
-        <!-- VISTA: CATÁLOGO Y PRECIOS -->
-        <div id="vista-catalogo" style="display: none;">
+                <p id="loader" class="loader" style="display: none;" role="status">Cargando base de datos...</p>
+                <div id="lista-proyectos" class="grid-proyectos" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <!-- VISTA: CATALOGO Y PRECIOS -->
+        <section id="vista-catalogo" aria-label="Catalogo de precios" hidden>
             <div class="panel-ingreso">
-                <h3>📚 Agregar al Catálogo de Precios</h3>
-                <p style="color:var(--text-muted); font-size:14px;">Define tus precios de reparación. Aparecerán automáticamente al ingresar un equipo.</p>
+                <h2>📚 Agregar al catalogo de precios</h2>
+                <p class="texto-ayuda">Define tus precios de reparacion. Apareceran automaticamente al ingresar un equipo.</p>
                 <form id="catalogo-form">
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Marca:</label>
-                            <input type="text" id="cat-marca" placeholder="Ej. Apple" required>
+                            <label for="cat-marca">Marca:</label>
+                            <input type="text" id="cat-marca" placeholder="Ej. Apple" required maxlength="60">
                         </div>
                         <div class="form-group">
-                            <label>Modelo:</label>
-                            <input type="text" id="cat-modelo" placeholder="Ej. iPhone 13" required>
+                            <label for="cat-modelo">Modelo:</label>
+                            <input type="text" id="cat-modelo" placeholder="Ej. iPhone 13" required maxlength="80">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Reparación:</label>
-                            <input type="text" id="cat-reparacion" placeholder="Ej. Cambio de Pantalla Orig." required>
+                            <label for="cat-reparacion">Reparacion:</label>
+                            <input type="text" id="cat-reparacion" placeholder="Ej. Cambio de pantalla original" required maxlength="120">
                         </div>
                         <div class="form-group">
-                            <label>Precio a cobrar ($):</label>
-                            <input type="number" id="cat-precio" placeholder="Ej. 85000" required>
+                            <label for="cat-precio">Precio a cobrar ($):</label>
+                            <input type="number" id="cat-precio" placeholder="Ej. 85000" required min="0" step="1" inputmode="numeric">
                         </div>
                     </div>
-                    <button type="submit" class="btn-guardar" style="background:#8b5cf6;">➕ Guardar en Catálogo</button>
+                    <button type="submit" class="btn-guardar btn-catalogo">➕ Guardar en catalogo</button>
                 </form>
             </div>
 
             <div class="panel-registros">
-                <h2>📋 Tus Precios Guardados</h2>
-                <div id="lista-catalogo" class="grid-proyectos" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));">
-                    <!-- Catálogo dinámico -->
-                </div>
+                <h2>📋 Tus precios guardados</h2>
+                <div id="lista-catalogo" class="grid-proyectos grid-catalogo" aria-live="polite"></div>
             </div>
-        </div>
+        </section>
+        </main>
     </div>
 
-    <!-- Modal Firma Digital -->
-    <div id="modal-firma" class="modal-overlay" style="display: none;">
+    <!-- Modal de firma digital -->
+    <div id="modal-firma" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="titulo-firma" aria-hidden="true">
         <div class="modal-content">
-            <h3 style="margin-top:0; color:var(--text-main);">Firma de Conformidad</h3>
-            <p style="color:var(--text-muted); font-size:14px; margin-bottom:15px;">Por favor, firme abajo para confirmar la recepción del equipo.</p>
-            <canvas id="canvas-firma" width="300" height="150"></canvas>
+            <h2 id="titulo-firma">Firma de conformidad</h2>
+            <p class="texto-ayuda">Por favor, firme abajo para confirmar la recepcion del equipo.</p>
+            <canvas id="canvas-firma" width="600" height="300" aria-label="Area de firma del cliente"></canvas>
             <div class="modal-actions">
-                <button id="btn-limpiar-firma" class="btn-icon">Limpiar</button>
-                <button id="btn-cancelar-firma" class="btn-cancelar">Cancelar</button>
-                <button id="btn-guardar-firma" class="btn-guardar">Guardar y Entregar</button>
+                <button type="button" id="btn-limpiar-firma" class="btn-icon">Limpiar</button>
+                <button type="button" id="btn-cancelar-firma" class="btn-cancelar">Cancelar</button>
+                <button type="button" id="btn-guardar-firma" class="btn-guardar">Guardar y entregar</button>
             </div>
         </div>
     </div>
 
-    <!-- Plantilla oculta para impresión -->
-    <div id="ticket-impresion" class="ticket-impresion"></div>
+    <!-- Plantilla oculta para impresion -->
+    <div id="ticket-impresion" class="ticket-impresion" aria-hidden="true"></div>
 
-    <!-- Firebase Compat SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
-
-    <script src="app.js?v=3"></script>
 </body>
 </html>

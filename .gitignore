@@ -1,0 +1,22 @@
+# Dependencias
+node_modules/
+
+# Artefactos de build / despliegue de Firebase
+.firebase/
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Credenciales (NUNCA deben versionarse)
+*serviceAccount*.json
+.env
+.env.*
+!.env.example
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

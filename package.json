@@ -1,0 +1,22 @@
+{
+  "name": "techfix-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PWA de gestion para servicio tecnico de equipos y smartphones (Firebase Hosting + Firestore).",
+  "type": "module",
+  "scripts": {
+    "audit:static": "node tools/audit.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "lint": "eslint app tools tests",
+    "check": "npm run lint && npm run audit:static && npm test",
+    "serve": "python3 -m http.server 8080 --bind 0.0.0.0 --directory app",
+    "serve:dev": "python3 -m http.server 8081 --bind 0.0.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.37.0",
+    "jsdom": "^27.0.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

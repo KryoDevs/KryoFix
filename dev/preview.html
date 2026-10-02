@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechFix - Verificacion visual de componentes</title>
+    <!--
+        Banco de pruebas visual. NO se despliega (firebase.json solo publica app/).
+        Sirve para comprobar a ojo que las clases que genera app.js tienen estilo
+        en estilos.css, sin necesidad de credenciales de Firebase.
+        Uso:  npm run serve:dev   ->  http://localhost:8081/dev/preview.html
+    -->
+    <link rel="stylesheet" href="../app/estilos.css">
+    <style>
+        .barra-dev {
+            position: sticky; top: 0; z-index: 10;
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+            padding: 12px 20px; background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .barra-dev h1 { font-size: 16px; margin: 0; }
+        .nota-dev { font-size: 12px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <div class="barra-dev">
+        <h1>Verificacion visual de componentes</h1>
+        <button type="button" class="btn-icon" id="toggle-tema">Alternar tema</button>
+        <span class="nota-dev">Datos ficticios. Si algo se ve sin estilo, falta una clase en estilos.css.</span>
+    </div>
+
+    <div class="container">
+        <div class="dashboard">
+            <div class="stat-card"><h3>Equipos Activos</h3><p class="stat-valor">7</p></div>
+            <div class="stat-card"><h3>Reparados (Mes)</h3><p class="stat-valor">12</p></div>
+            <div class="stat-card stat-money"><h3>Ingresos del Mes</h3><p class="stat-valor">$1.240.000</p></div>
+        </div>
+
+        <div class="panel-registros">
+            <div class="header-registros">
+                <h2>📋 Equipos en Taller</h2>
+                <div class="controles-busqueda">
+                    <input type="search" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
+                    <select><option>Solo activos en taller</option></select>
+                </div>
+            </div>
+            <div class="grid-proyectos" id="demo"></div>
+        </div>
+    </div>
+
+    <script src="preview.js"></script>
+</body>
+</html>
