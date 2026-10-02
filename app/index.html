@@ -16,15 +16,29 @@
     <meta name="theme-color" content="#0f172a">
     <link rel="apple-touch-icon" href="icon-192.png">
 
-    <!-- Dependencias externas con version EXACTA (nunca rangos como @11) -->
-    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js" crossorigin="anonymous"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+    <!--
+        Dependencias servidas desde el PROPIO origen (app/vendor/), no desde CDN:
+          - la app funciona sin conexion y en redes que bloquean CDNs;
+          - un CDN comprometido no puede ejecutar codigo en una pagina que
+            maneja datos personales de clientes;
+          - permite una Content-Security-Policy estricta (script-src 'self').
+        Versiones: firebase 10.8.1 (compat) y sweetalert2 11.14.5.
+        El orden de los <script defer> se respeta.
+    -->
+    <script defer src="vendor/firebase-app-compat.js"></script>
+    <script defer src="vendor/firebase-auth-compat.js"></script>
+    <script defer src="vendor/firebase-firestore-compat.js"></script>
+    <script defer src="vendor/sweetalert2.all.min.js"></script>
     <script defer src="app.js"></script>
 </head>
 <body>
+
+    <!-- Aviso de arranque fallido (dependencias no disponibles) -->
+    <div id="aviso-dependencias" class="panel-ingreso aviso-dependencias" hidden></div>
+
+    <noscript>
+        <p class="panel-ingreso">Esta aplicacion necesita JavaScript activado para funcionar.</p>
+    </noscript>
 
     <!-- PANTALLA DE LOGIN -->
     <div id="login-screen" class="login-wrapper">
@@ -47,6 +61,7 @@
                 </div>
                 <button type="submit" class="btn-neon">Ingresar al Sistema</button>
             </form>
+            <button type="button" id="btn-recuperar" class="enlace-login">Olvide mi contrasena</button>
             <p class="login-footer">Sistema de gestion seguro</p>
         </div>
     </div>
@@ -60,10 +75,11 @@
                 <h1>TechFix Tracker Pro</h1>
             </div>
             <nav class="user-actions" aria-label="Acciones de usuario">
-                <span id="red-status" class="badge-estado estado-reparado" style="display: none;">?? Online</span><span id="user-email-display" class="user-email"></span>
+                <span id="red-status" class="badge-estado estado-reparado" style="display: none;" role="status" aria-live="polite">📶 Online</span><span id="user-email-display" class="user-email"></span>
                 <button type="button" id="btn-nav-taller" class="btn-icon activo" aria-current="page">🏠 Taller</button>
                 <button type="button" id="btn-nav-catalogo" class="btn-icon" aria-current="false">📚 Catalogo</button>
                 <button type="button" id="btn-theme" class="btn-icon" aria-pressed="false">🌙 Modo Oscuro</button>
+                <button type="button" id="btn-contrasena" class="btn-icon">🔑 Contrasena</button>
                 <button type="button" id="btn-logout" class="btn-icon btn-outline-danger">🚪 Salir</button>
             </nav>
         </header>
@@ -71,6 +87,8 @@
         <main>
         <!-- VISTA: TALLER -->
         <section id="vista-taller" aria-label="Taller">
+            <div id="aviso-vencidos" class="aviso-bloque" role="status" hidden></div>
+
             <div class="dashboard">
                 <div class="stat-card">
                     <h3>Equipos Activos</h3>
@@ -158,7 +176,7 @@
                     <div class="form-group">
                         <label for="foto-evidencia">📷 Fotografia de evidencia (opcional):</label>
                         <input type="file" id="foto-evidencia" class="input-archivo" accept="image/*" capture="environment">
-                        <small>Se guarda una copia comprimida para ahorrar espacio.</small>
+                        <small>Se comprime automaticamente antes de guardarla (max. 200 KB).</small>
                         <div id="preview-foto" class="preview-foto" style="display: none;">
                             <img id="img-evidencia-preview" src="" alt="Previsualizacion de la evidencia">
                         </div>
@@ -191,7 +209,8 @@
                 <div class="header-registros">
                     <h2>📋 Equipos en Taller</h2>
                     <div class="controles-busqueda">
-                        <button type="button" id="btn-exportar" class="btn-icon" style="background: var(--primary); color: white; margin-right: 10px;" title="Exportar datos a CSV">?? Exportar</button><label class="sr-only" for="buscador">Buscar equipos</label>
+                        <button type="button" id="btn-exportar" class="btn-icon btn-exportar" title="Exportar a CSV lo que estas viendo">📤 Exportar CSV</button>
+                        <label class="sr-only" for="buscador">Buscar equipos</label>
                         <input type="search" id="buscador" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
@@ -243,7 +262,11 @@
 
             <div class="panel-registros">
                 <h2>📋 Tus precios guardados</h2>
-                <div class="controles-busqueda" style="margin-bottom: 20px;"><input type="search" id="cat-buscador" placeholder="?? Buscar marca, modelo o reparaci�n..."></div><div id="lista-catalogo" class="grid-proyectos grid-catalogo" aria-live="polite"></div>
+                <div class="controles-busqueda controles-catalogo">
+                    <label class="sr-only" for="cat-buscador">Buscar precios</label>
+                    <input type="search" id="cat-buscador" placeholder="🔍 Buscar por marca, modelo o reparacion...">
+                </div>
+                <div id="lista-catalogo" class="grid-proyectos grid-catalogo" aria-live="polite"></div>
             </div>
         </section>
         </main>
@@ -263,11 +286,11 @@
         </div>
     </div>
 
-    <!-- Plantilla oculta para impresion -->
-    <div id="ticket-impresion" class="ticket-impresion" aria-hidden="true"></div>
+    <!--
+        Capa oculta que solo se ve al imprimir. El contenido lo genera app.js
+        (nunca se concatena HTML a mano).
+    -->
+    <div id="capa-impresion" class="capa-impresion" aria-hidden="true"></div>
 
 </body>
 </html>
-
-
-

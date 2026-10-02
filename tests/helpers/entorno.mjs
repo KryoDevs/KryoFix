@@ -6,10 +6,29 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { JSDOM, VirtualConsole } from 'jsdom';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const require = createRequire(import.meta.url);
 const leer = (p) => readFileSync(join(ROOT, p), 'utf8');
+
+/**
+ * Aplica las "sentinelas" del SDK (FieldValue.arrayUnion, increment...) a un
+ * documento. En el doble solo se implementa arrayUnion, que es lo que usa la app
+ * para el historial de estados.
+ */
+export function aplicarSentinelas(actual, parche) {
+    const salida = { ...(actual || {}) };
+    for (const [clave, valor] of Object.entries(parche || {})) {
+        if (valor && typeof valor === 'object' && Array.isArray(valor.__arrayUnion)) {
+            salida[clave] = [...(Array.isArray(salida[clave]) ? salida[clave] : []), ...valor.__arrayUnion];
+        } else {
+            salida[clave] = valor;
+        }
+    }
+    return salida;
+}
 
 /** Doble de Firestore: guarda documentos en memoria y notifica a onSnapshot. */
 export function crearFirestoreFalso(semilla = {}) {
@@ -83,7 +102,7 @@ export function crearFirestoreFalso(semilla = {}) {
                     async update(parche) {
                         const actual = col(coleccion).get(id);
                         if (!actual) throw Object.assign(new Error('No document to update'), { code: 'not-found' });
-                        col(coleccion).set(id, { ...actual, ...parche });
+                        col(coleccion).set(id, aplicarSentinelas(actual, parche));
                         notificar();
                     },
                     async delete() {
@@ -138,7 +157,7 @@ export function crearFirestoreFalso(semilla = {}) {
                 for (const op of ops) {
                     const { coleccion: c, id } = op.ref._ref;
                     if (op.tipo === 'set') col(c).set(id, { ...op.data });
-                    else if (op.tipo === 'update') col(c).set(id, { ...col(c).get(id), ...op.data });
+                    else if (op.tipo === 'update') col(c).set(id, aplicarSentinelas(col(c).get(id), op.data));
                     else col(c).delete(id);
                 }
                 notificar();
@@ -152,6 +171,12 @@ export function crearFirestoreFalso(semilla = {}) {
         _limpiezas: limpiezas,
         batch,
         collection: (n) => consulta(n),
+        // Sentinelas del SDK que usa la app (historial de estados).
+        FieldValue: {
+            arrayUnion: (...items) => ({ __arrayUnion: items }),
+            delete: () => ({ __delete: true })
+        },
+        setLogLevel: () => {},
         enablePersistence: () => Promise.resolve(),
         clearPersistence: () => {
             limpiezas.push(Date.now());
@@ -219,10 +244,18 @@ export function crearSwalFalso() {
  * Carga un HTML de la app en jsdom e inyecta los dobles antes de ejecutar el
  * script indicado.
  */
-export function montarApp({ html = 'app/index.html', script = 'app/app.js', semilla = {} } = {}) {
+export function montarApp({
+    html = 'app/index.html',
+    script = 'app/app.js',
+    semilla = {},
+    conQr = false,
+    sinFirebase = false,
+    inyectarScripts = true
+} = {}) {
     const virtualConsole = new VirtualConsole();
     const errores = [];
     virtualConsole.on('jsdomError', (e) => errores.push(e));
+    virtualConsole.on('error', () => {}); // la app registra avisos a proposito
 
     const dom = new JSDOM(leer(html), {
         url: 'https://ejemplo.test/',
@@ -236,11 +269,15 @@ export function montarApp({ html = 'app/index.html', script = 'app/app.js', semi
     const auth = crearAuthFalso();
     const swal = crearSwalFalso();
 
+    // El SDK real expone las clases/sentinelas como propiedades de firebase.firestore.
+    const firestoreFn = () => db;
+    firestoreFn.FieldValue = db.FieldValue;
     window.firebase = {
         initializeApp: () => ({}),
-        firestore: () => db,
+        firestore: firestoreFn,
         auth: () => auth
     };
+    if (sinFirebase) delete window.firebase;
     window.Swal = swal;
     window.print = () => {
         window.__impreso = (window.__impreso || 0) + 1;
@@ -253,6 +290,18 @@ export function montarApp({ html = 'app/index.html', script = 'app/app.js', semi
     window.matchMedia =
         window.matchMedia ||
         (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+
+    // jsdom no implementa createObjectURL (lo usa la exportacion a CSV).
+    const descargas = [];
+    window.URL.createObjectURL = (blob) => {
+        descargas.push(blob);
+        return 'blob:descarga-' + descargas.length;
+    };
+    window.URL.revokeObjectURL = () => {};
+    window.__descargas = descargas;
+
+    // Opcional: simula que la libreria de QR local ya se cargo.
+    if (conQr) window.qrcode = require('qrcode-generator');
 
     // Canvas: jsdom no implementa 2d, se sustituye por un espia.
     const trazos = [];
@@ -274,10 +323,14 @@ export function montarApp({ html = 'app/index.html', script = 'app/app.js', semi
             clearRect() {
                 trazos.push({ tipo: 'clear' });
             },
+            fillRect() {
+                // La firma se exporta a JPEG (sin canal alfa): el fondo debe
+                // pintarse de blanco, no "borrarse".
+                trazos.push({ tipo: 'fill' });
+            },
             drawImage() {},
             scale() {},
             getImageData: (_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
-            fillRect() {},
             set fillStyle(_v) {}
         };
     };
@@ -285,6 +338,15 @@ export function montarApp({ html = 'app/index.html', script = 'app/app.js', semi
         return 'data:image/jpeg;base64,FIRMA';
     };
     window.__trazos = trazos;
+
+    // Igual que en el HTML real: si el contenedor existe, tambien se coloca el
+    // codigo dentro (permite comprobar que ningun CDN sirva codigo en linea).
+    if (inyectarScripts) {
+        for (const [id, rutaScript] of [['app.js', 'app/app.js'], ['status.js', 'app/status.js']]) {
+            const contenedor = window.document.getElementById(id);
+            if (contenedor) contenedor.textContent = leer(rutaScript);
+        }
+    }
 
     window.eval(leer(script));
 

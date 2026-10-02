@@ -44,7 +44,7 @@
         .device-info h2 { margin: 0 0 5px 0; font-size: 18px; }
         .device-info p { margin: 0; color: #94a3b8; font-size: 14px; }
 
-        .timeline { max-width: 260px; margin: 0 auto; text-align: left; }
+        .timeline { max-width: 260px; margin: 0 auto; text-align: left; list-style: none; padding: 0; }
         .step {
             display: flex;
             align-items: center;
@@ -70,6 +70,7 @@
         .loader { margin: 20px 0; color: #3b82f6; font-weight: bold; }
         .error-msg { color: #fca5a5; font-weight: bold; line-height: 1.5; }
         .aviso-listo { color: #10b981; font-weight: bold; margin-top: 20px; }
+        .mensaje-estado { color: #cbd5e1; font-size: 14px; line-height: 1.5; margin: 18px 0 0; }
         .footer { margin-top: 30px; font-size: 12px; color: #64748b; }
 
         @media (prefers-reduced-motion: reduce) {
@@ -116,20 +117,23 @@
                 </li>
             </ol>
 
+            <p id="msg-estado" class="mensaje-estado" aria-live="polite"></p>
+
             <p id="msg-reparado" class="aviso-listo" style="display:none;">
                 Tu equipo ya esta listo. Te esperamos en nuestro local para la entrega.
             </p>
         </div>
 
-        <p id="error" class="error-msg" style="display: none;">
+        <p id="error" class="error-msg" style="display: none;" role="alert">
             No se encontro el equipo. Por favor, verifica el codigo QR.
         </p>
 
         <p class="footer">Sistema de consulta automatica</p>
     </main>
 
-    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js" crossorigin="anonymous"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+    <!-- Dependencias locales: el seguimiento tambien debe abrir sin conexion -->
+    <script defer src="vendor/firebase-app-compat.js"></script>
+    <script defer src="vendor/firebase-firestore-compat.js"></script>
     <script defer src="status.js"></script>
 </body>
 </html>

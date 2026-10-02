@@ -4,19 +4,20 @@
  * Estrategias:
  *   - Navegaciones (HTML): red primero, cache de respaldo => el codigo nuevo
  *     llega de inmediato y la app sigue abriendo sin conexion.
- *   - Estaticos propios (css/js/img): stale-while-revalidate => respuesta
- *     instantanea y actualizacion en segundo plano.
- *   - Librerias de terceros con version fija en la URL: cache primero
- *     (son inmutables). Precachearlas es lo que hace que la PWA funcione
- *     realmente offline.
+ *   - Librerias propias (vendor/): cache primero => sus nombres son fijos y su
+ *     contenido inmutable. Precachearlas es lo que hace que la PWA funcione
+ *     realmente offline (antes vivian en un CDN y no estaban en la cache).
+ *   - Resto de estaticos propios (css/js/img): stale-while-revalidate =>
+ *     respuesta instantanea y actualizacion en segundo plano.
  *   - Firestore / Auth / APIs: NUNCA se interceptan.
  * ========================================================================== */
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE_APP = `techfix-app-${VERSION}`;
-const CACHE_EXTERNO = `techfix-vendor-${VERSION}`;
-const CACHES_VIGENTES = [CACHE_APP, CACHE_EXTERNO];
+const CACHE_VENDOR = `techfix-vendor-${VERSION}`;
+const CACHES_VIGENTES = [CACHE_APP, CACHE_VENDOR];
 
+// Todo lo que hay que tener en disco para abrir la app sin conexion.
 const RECURSOS_APP = [
     './',
     './index.html',
@@ -28,15 +29,17 @@ const RECURSOS_APP = [
     './manifest.json',
     './logo.jpg',
     './icon-192.png',
-    './icon-512.png'
+    './icon-512.png',
+    './ticket-qr.png'
 ];
 
-// URLs versionadas e inmutables: seguro cachearlas indefinidamente.
-const RECURSOS_EXTERNOS = [
-    'https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js',
-    'https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js',
-    'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js'
+// Dependencias servidas desde el propio origen (app/vendor/), sin CDN.
+const RECURSOS_VENDOR = [
+    './vendor/firebase-app-compat.js',
+    './vendor/firebase-auth-compat.js',
+    './vendor/firebase-firestore-compat.js',
+    './vendor/sweetalert2.all.min.js',
+    './vendor/qrcode.js'
 ];
 
 // Dominios que gestionan su propio transporte/offline: dejarlos pasar siempre.
@@ -47,7 +50,7 @@ const DOMINIOS_EXCLUIDOS = [
     'securetoken.googleapis.com',
     'firebaseio.com',
     'google-analytics.com',
-    'api.qrserver.com'
+    'googletagmanager.com'
 ];
 
 /**
@@ -69,7 +72,7 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         (async () => {
             await precachearTolerante(CACHE_APP, RECURSOS_APP);
-            await precachearTolerante(CACHE_EXTERNO, RECURSOS_EXTERNOS);
+            await precachearTolerante(CACHE_VENDOR, RECURSOS_VENDOR);
             // Activa la version nueva sin esperar a que se cierren las pestanas.
             await self.skipWaiting();
         })()
@@ -90,19 +93,19 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-async function redPrimero(request, nombreCache) {
+async function redPrimero(request, nombreCache, respaldo) {
     const cache = await caches.open(nombreCache);
     try {
         const respuesta = await fetch(request);
         if (respuesta && respuesta.ok) cache.put(request, respuesta.clone());
         return respuesta;
     } catch (_e) {
-        const enCache = (await cache.match(request)) || (await cache.match('./index.html'));
+        const enCache = (await cache.match(request)) || (respaldo ? await cache.match(respaldo) : null);
         if (enCache) return enCache;
-        return new Response('<h1>Sin conexion</h1><p>Abre la app una vez con internet para habilitar el modo offline.</p>', {
-            status: 503,
-            headers: { 'Content-Type': 'text/html; charset=utf-8' }
-        });
+        return new Response(
+            '<h1>Sin conexion</h1><p>Abre la app una vez con internet para habilitar el modo offline.</p>',
+            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
     }
 }
 
@@ -143,17 +146,17 @@ self.addEventListener('fetch', (event) => {
     if (DOMINIOS_EXCLUIDOS.some((d) => url.hostname === d || url.hostname.endsWith('.' + d))) return;
 
     if (request.mode === 'navigate') {
-        event.respondWith(redPrimero(request, CACHE_APP));
+        event.respondWith(redPrimero(request, CACHE_APP, './index.html'));
         return;
     }
 
     if (url.origin === self.location.origin) {
+        // Librerias del propio origen: inmutables, cache primero.
+        if (url.pathname.includes('/vendor/')) {
+            event.respondWith(cachePrimero(request, CACHE_VENDOR));
+            return;
+        }
         event.respondWith(staleWhileRevalidate(request, CACHE_APP));
-        return;
-    }
-
-    if (RECURSOS_EXTERNOS.some((r) => request.url.startsWith(r.split('?')[0]))) {
-        event.respondWith(cachePrimero(request, CACHE_EXTERNO));
     }
     // Cualquier otro origen desconocido pasa directo a la red.
 });

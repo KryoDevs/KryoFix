@@ -7,6 +7,7 @@ const USUARIO = { uid: 'uid-ana', email: 'ana@taller.cl' };
 function equipo(extra = {}) {
     return {
         uid: USUARIO.uid,
+        idOrden: 'TF-251002-001',
         cliente: 'Juan Perez',
         telefono: '56912345678',
         equipo: 'Apple',
@@ -18,17 +19,27 @@ function equipo(extra = {}) {
         estado: 'ingresado',
         costo: 85000,
         abono: 20000,
-        fecha: '01-10-2025',
+        fecha: '2025-10-01T12:00:00.000Z',
         timestamp: Date.now(),
         ...extra
     };
 }
 
-async function sesionIniciada(semilla = {}) {
-    const ctx = montarApp({ semilla });
+async function sesionIniciada(semilla = {}, opciones = {}) {
+    const ctx = montarApp({ semilla, ...opciones });
     ctx.auth._entrar(USUARIO);
     await tick(10);
     return ctx;
+}
+
+/** Lee el contenido de un Blob descargado (jsdom no implementa Blob.text). */
+function leerBlob(window, blob) {
+    return new Promise((resolver, rechazar) => {
+        const lector = new window.FileReader();
+        lector.onload = () => resolver(String(lector.result));
+        lector.onerror = () => rechazar(lector.error);
+        lector.readAsText(blob);
+    });
 }
 
 describe('Aislamiento de datos entre usuarios', () => {
@@ -97,22 +108,27 @@ describe('Escapado y sanitizacion', () => {
         assert.equal(lista.querySelector('h3').textContent, hostil);
     });
 
-    test('el ticket impreso escapa las comillas en los atributos', async () => {
+    test('el ticket impreso no inyecta HTML desde los datos del cliente', async () => {
         const { window, document } = await sesionIniciada({
             equipos: { a: equipo({ cliente: '"><img src=x onerror=alert(1)>' }) }
         });
         window.TechFix.imprimirBoleta('a');
-        const ticket = document.getElementById('ticket-impresion');
+        const ticket = document.getElementById('capa-impresion');
+        assert.ok(ticket, 'debe existir la capa de impresion');
         for (const nodo of ticket.querySelectorAll('*')) {
             for (const attr of nodo.attributes) {
                 assert.ok(!/^on/i.test(attr.name), `atributo inyectado en el ticket: ${attr.name}`);
             }
         }
-        assert.ok(ticket.textContent.includes('"><img src=x onerror=alert(1)>'), 'el nombre debe verse como texto');
+        assert.equal(ticket.querySelectorAll('img[src="x"]').length, 0, 'el HTML inyectado no debe crear elementos');
+        assert.ok(
+            ticket.textContent.includes('"><img src=x onerror=alert(1)>'),
+            'el nombre debe verse como texto'
+        );
     });
 });
 
-describe('WhatsApp', () => {
+describe('WhatsApp y compartir', () => {
     test('normaliza el telefono y abre con noopener', async () => {
         const { window } = await sesionIniciada({ equipos: { a: equipo({ telefono: '+56 9 1234 5678' }) } });
         window.TechFix.enviarWhatsApp('a');
@@ -128,14 +144,71 @@ describe('WhatsApp', () => {
         assert.equal((window.__ventanas || []).length, antes, 'no debe abrir WhatsApp con un numero invalido');
         assert.ok(swal.llamadas.length > 0);
     });
+
+    test('compartir copia el enlace de seguimiento al portapapeles', async () => {
+        const { window } = await sesionIniciada({ equipos: { a: equipo() } });
+        let copiado = '';
+        Object.defineProperty(window.navigator, 'clipboard', {
+            value: { writeText: async (t) => { copiado = t; } },
+            configurable: true
+        });
+        await window.TechFix.compartirTicket('a');
+        assert.equal(copiado, window.TechFix.urlSeguimiento('a'));
+    });
 });
 
-describe('Ticket y QR', () => {
+describe('Ticket, QR y numero de orden', () => {
     test('la URL de seguimiento usa el origen actual, no un dominio fijo', async () => {
         const { window } = await sesionIniciada({ equipos: { a: equipo() } });
         const url = window.TechFix.urlSeguimiento('a');
         assert.ok(url.startsWith('https://ejemplo.test/'), `debe usar location.origin: ${url}`);
         assert.ok(!url.includes('techfix-tracker-9a128.web.app'));
+    });
+
+    test('sin la libreria de QR el ticket usa el QR estatico versionado', async () => {
+        const { window, document } = await sesionIniciada({ equipos: { a: equipo() } });
+        window.TechFix.imprimirBoleta('a');
+        const img = document.querySelector('#capa-impresion .boleta-qr img');
+        assert.ok(img, 'debe dibujarse un QR de respaldo');
+        assert.equal(img.getAttribute('src'), 'ticket-qr.png');
+        assert.ok(
+            document.querySelector('#capa-impresion .url-respaldo').textContent.startsWith('https://ejemplo.test/'),
+            'la URL debe quedar impresa como texto'
+        );
+    });
+
+    test('con la libreria de QR disponible el ticket genera un SVG propio (sin terceros)', async () => {
+        const { window, document } = await sesionIniciada({ equipos: { a: equipo() } }, { conQr: true });
+        window.TechFix.imprimirBoleta('a');
+        const svg = document.querySelector('#capa-impresion .boleta-qr svg');
+        assert.ok(svg, 'debe generarse el QR en el navegador');
+        assert.ok(!document.querySelector('#capa-impresion img[src^="https://api"]'), 'nada de servicios externos de QR');
+    });
+
+    test('el numero de orden es legible y se imprime en el ticket', async () => {
+        const { window, document, db } = await sesionIniciada();
+        document.getElementById('cliente').value = 'Maria';
+        document.getElementById('telefono').value = '56988887777';
+        document.getElementById('marca').value = 'Samsung';
+        const modelo = document.getElementById('modelo');
+        modelo.disabled = false;
+        modelo.innerHTML = '<option value="S22">S22</option>';
+        modelo.value = 'S22';
+        document.getElementById('costo').value = '50000';
+
+        document.getElementById('proyecto-form').dispatchEvent(
+            new document.defaultView.Event('submit', { bubbles: true, cancelable: true })
+        );
+        await tick(20);
+
+        const guardado = [...db._datos.get('equipos').values()][0];
+        assert.match(guardado.idOrden, /^TF-\d{6}-\d{3}$/, `numero de orden inesperado: ${guardado.idOrden}`);
+
+        window.TechFix.imprimirBoleta([...db._datos.get('equipos').keys()][0]);
+        assert.ok(
+            document.getElementById('capa-impresion').textContent.includes(guardado.idOrden),
+            'el numero de orden debe aparecer en el ticket'
+        );
     });
 });
 
@@ -159,12 +232,173 @@ describe('Firma digital', () => {
         );
     });
 
+    test('el fondo del lienzo se pinta de blanco (se exporta a JPEG, sin alfa)', async () => {
+        const { window, document, trazos } = await sesionIniciada({ equipos: { a: equipo() } });
+        trazos.length = 0;
+        window.TechFix.archivarProyecto('a');
+        const primerTrazo = trazos[0];
+        assert.equal(
+            primerTrazo && primerTrazo.tipo,
+            'fill',
+            'sin pintar el fondo, la firma exportada a JPEG sale con fondo negro'
+        );
+
+        trazos.length = 0;
+        document.getElementById('btn-limpiar-firma').click();
+        assert.equal(trazos[0] && trazos[0].tipo, 'fill', 'limpiar tambien debe repintar el fondo');
+    });
+
     test('no permite guardar una firma en blanco', async () => {
         const { window, document, db } = await sesionIniciada({ equipos: { a: equipo() } });
         window.TechFix.archivarProyecto('a');
         document.getElementById('btn-guardar-firma').click();
         await tick(10);
         assert.notEqual(db._datos.get('equipos').get('a').estado, 'entregado', 'no debe entregarse sin firma');
+    });
+
+    test('la entrega con firma guarda firma, fecha de entrega e historial', async () => {
+        const { window, document, db } = await sesionIniciada({
+            equipos: { a: equipo({ historial: [{ estado: 'ingresado', en: 1, por: USUARIO.uid }] }) }
+        });
+        window.TechFix.archivarProyecto('a');
+        const canvas = document.getElementById('canvas-firma');
+        canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 10, clientY: 10, bubbles: true }));
+        canvas.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 30, clientY: 40, bubbles: true }));
+        document.getElementById('btn-guardar-firma').click();
+        await tick(20);
+
+        const doc = db._datos.get('equipos').get('a');
+        assert.equal(doc.estado, 'entregado');
+        assert.ok(String(doc.firmaCliente).startsWith('data:image/jpeg'));
+        assert.ok(doc.fechaEntrega > 0, 'debe registrarse la fecha de entrega');
+        assert.equal(doc.historial.length, 2, 'el historial debe acumular la entrega');
+        assert.equal(doc.historial.at(-1).estado, 'entregado');
+        assert.equal(db._datos.get('seguimiento').get('a').estado, 'entregado');
+    });
+});
+
+describe('Estados: transiciones y recordatorios', () => {
+    test('permiteEstado admite avanzar, retroceder un paso y reserva entregado', async () => {
+        const { window } = await sesionIniciada();
+        const { permiteEstado } = window.TechFix;
+        assert.equal(permiteEstado({ estado: 'ingresado' }, 'reparado'), true);
+        assert.equal(permiteEstado({ estado: 'ingresado' }, 'entregado'), false, 'entregado se reserva a la firma');
+        assert.equal(permiteEstado({ estado: 'reparado' }, 'repuesto'), true, 'un paso atras corrige un clic');
+        assert.equal(permiteEstado({ estado: 'reparado' }, 'revision'), false, 'no se puede saltar hacia atras');
+        assert.equal(permiteEstado({ estado: 'entregado' }, 'entregado'), true);
+        assert.equal(permiteEstado({ estado: 'entregado' }, 'ingresado'), false);
+    });
+
+    test('el selector de la tarjeta deshabilita los estados no alcanzables', async () => {
+        const { document } = await sesionIniciada({ equipos: { a: equipo({ estado: 'ingresado' }) } });
+        const select = document.querySelector('#lista-proyectos select');
+        assert.equal(select.querySelector('option[value="entregado"]').disabled, true);
+        assert.equal(select.querySelector('option[value="reparado"]').disabled, false);
+    });
+
+    test('un salto de estado invalido no escribe en la base', async () => {
+        const { window, db } = await sesionIniciada({ equipos: { a: equipo({ estado: 'reparado' }) } });
+        await window.TechFix.cambiarEstado('a', 'revision');
+        await tick(10);
+        assert.equal(db._datos.get('equipos').get('a').estado, 'reparado');
+    });
+
+    test('el cambio de estado queda registrado en el historial', async () => {
+        const { window, db } = await sesionIniciada({
+            equipos: { a: equipo({ historial: [{ estado: 'ingresado', en: 1, por: USUARIO.uid }] }) }
+        });
+        await window.TechFix.cambiarEstado('a', 'reparado');
+        await tick(10);
+        const doc = db._datos.get('equipos').get('a');
+        assert.equal(doc.historial.length, 2);
+        assert.equal(doc.historial.at(-1).estado, 'reparado');
+        assert.ok(doc.historial.at(-1).en > 0);
+    });
+
+    test('avisa cuando un equipo lleva demasiado tiempo en el taller', async () => {
+        const haceCuarentaDias = Date.now() - 40 * 86400000;
+        const { document } = await sesionIniciada({
+            equipos: {
+                listo: equipo({
+                    cliente: 'Ana Lista',
+                    estado: 'reparado',
+                    timestamp: haceCuarentaDias,
+                    fechaReparacion: haceCuarentaDias
+                }),
+                nuevo: equipo({ cliente: 'Beto Nuevo', estado: 'repuesto', timestamp: Date.now() })
+            }
+        });
+
+        const aviso = document.getElementById('aviso-vencidos');
+        assert.equal(aviso.hidden, false, 'debe mostrarse el aviso de equipos sin retirar');
+        assert.match(aviso.textContent, /Ana Lista/);
+        assert.ok(!aviso.textContent.includes('Beto Nuevo'), 'solo entran las ordenes que superan el plazo');
+
+        const tarjeta = [...document.querySelectorAll('#lista-proyectos .badge-espera')];
+        assert.equal(tarjeta.length, 1, 'solo la orden antigua lleva la marca de espera');
+    });
+
+    test('el aviso permite filtrar los equipos listos para entregar', async () => {
+        const haceCuarentaDias = Date.now() - 40 * 86400000;
+        const { document } = await sesionIniciada({
+            equipos: {
+                listo: equipo({ cliente: 'Ana Lista', estado: 'reparado', timestamp: haceCuarentaDias, fechaReparacion: haceCuarentaDias }),
+                otro: equipo({ cliente: 'Beto Nuevo', estado: 'repuesto', timestamp: Date.now() })
+            }
+        });
+        document.getElementById('btn-ver-vencidos').click();
+        await tick(10);
+        assert.equal(document.getElementById('filtro-estado').value, 'reparado');
+        const texto = document.getElementById('lista-proyectos').textContent;
+        assert.ok(texto.includes('Ana Lista'));
+        assert.ok(!texto.includes('Beto Nuevo'));
+    });
+});
+
+describe('Exportacion a CSV', () => {
+    test('escapa comillas, saltos de linea y agrega BOM para Excel', async () => {
+        const { window } = await sesionIniciada();
+        const csv = window.TechFix.exportCSV([
+            equipo({ cliente: 'Ana "la jefa"', falla: 'Linea 1\nLinea 2', costo: 1000, abono: 500 })
+        ]);
+        assert.ok(csv.startsWith('\ufeff'), 'debe empezar con BOM');
+        assert.ok(csv.includes('"Ana ""la jefa"""'), 'las comillas internas deben duplicarse');
+        assert.ok(csv.includes('"Linea 1\nLinea 2"'), 'el salto de linea debe quedar dentro de comillas');
+        assert.ok(csv.includes('"500"'), 'debe incluir el saldo calculado');
+    });
+
+    test('exporta solo lo que el filtro deja ver y descarga el archivo', async () => {
+        const { window, document } = await sesionIniciada({
+            equipos: {
+                activo: equipo({ cliente: 'Cliente Activo' }),
+                viejo: equipo({ cliente: 'Cliente Antiguo', estado: 'entregado', timestamp: 5 })
+            }
+        });
+        document.getElementById('btn-exportar').click();
+        await tick(10);
+
+        assert.equal(window.__descargas.length, 1, 'debe generarse una descarga');
+        const texto = await leerBlob(window, window.__descargas[0]);
+        assert.ok(texto.includes('Cliente Activo'));
+        assert.ok(!texto.includes('Cliente Antiguo'), 'con el filtro "activos" no debe exportar entregados');
+    });
+});
+
+describe('Indicador de red', () => {
+    test('muestra Offline mientras no hay conexion y Online al recuperarla', async () => {
+        const { window, document } = await sesionIniciada();
+        const badge = document.getElementById('red-status');
+
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+        window.dispatchEvent(new window.Event('offline'));
+        assert.match(badge.textContent, /Offline/);
+        assert.equal(badge.style.display, 'inline-block');
+        assert.match(badge.className, /estado-revision/);
+
+        Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+        window.dispatchEvent(new window.Event('online'));
+        assert.match(badge.textContent, /Online/);
+        assert.match(badge.className, /estado-reparado/);
     });
 });
 
@@ -202,7 +436,7 @@ describe('Formulario de ingreso', () => {
         assert.notEqual(libre.offsetParent === null && libre.hidden, true, 'el campo debe quedar visible');
     });
 
-    test('rechaza abono mayor al costo', async () => {
+    test('rechaza abono mayor al costo y marca el campo', async () => {
         const { document, db, swal } = await sesionIniciada();
         document.getElementById('cliente').value = 'Test';
         document.getElementById('telefono').value = '56911112222';
@@ -221,9 +455,11 @@ describe('Formulario de ingreso', () => {
 
         assert.equal((db._datos.get('equipos') ?? new Map()).size, 0, 'no debe guardarse con abono > costo');
         assert.ok(swal.llamadas.some((c) => /abono/i.test(JSON.stringify(c))), 'debe avisar del abono invalido');
+        assert.ok(document.getElementById('abono').classList.contains('campo-invalido'), 'el campo debe quedar marcado');
+        assert.ok(!document.getElementById('cliente').classList.contains('campo-invalido'));
     });
 
-    test('guarda un ingreso valido con uid del usuario', async () => {
+    test('guarda un ingreso valido con uid, fecha ISO y telefono normalizado', async () => {
         const { document, db } = await sesionIniciada();
         document.getElementById('cliente').value = 'Maria';
         document.getElementById('telefono').value = '+56 9 8888 7777';
@@ -244,6 +480,8 @@ describe('Formulario de ingreso', () => {
         assert.equal(docs.length, 1);
         assert.equal(docs[0].uid, USUARIO.uid);
         assert.equal(docs[0].telefono, '56988887777', 'el telefono debe guardarse normalizado');
+        assert.match(docs[0].fecha, /^\d{4}-\d{2}-\d{2}T/, 'la fecha debe guardarse en ISO 8601');
+        assert.equal(docs[0].fechaEntrega, null);
     });
 });
 
@@ -273,6 +511,7 @@ describe('Seguimiento publico', () => {
         for (const sensible of ['Maria', '56988887777', '99988877', '4321']) {
             assert.ok(!texto.includes(sensible), `el espejo publico no debe incluir "${sensible}"`);
         }
+        assert.deepEqual(Object.keys(publico).sort(), ['actualizado', 'estado', 'modelo', 'uid']);
         assert.equal(publico.modelo, 'S22');
         assert.equal(publico.estado, 'ingresado');
     });
@@ -315,6 +554,43 @@ describe('PIN del equipo', () => {
     });
 });
 
+describe('Catalogo de precios', () => {
+    test('el buscador del catalogo filtra sin duplicar tarjetas', async () => {
+        const { document } = await sesionIniciada({
+            catalogo: {
+                c1: { uid: USUARIO.uid, marca: 'Apple', modelo: 'iPhone 13', reparacion: 'Pantalla', precio: 85000 },
+                c2: { uid: USUARIO.uid, marca: 'Samsung', modelo: 'S22', reparacion: 'Bateria', precio: 45000 }
+            }
+        });
+        const buscador = document.getElementById('cat-buscador');
+        buscador.value = 'samsung';
+        buscador.dispatchEvent(new document.defaultView.Event('input'));
+        await tick(300);
+
+        const tarjetas = document.querySelectorAll('#lista-catalogo .tarjeta-catalogo');
+        assert.equal(tarjetas.length, 1, 'solo debe quedar la coincidencia (sin duplicados)');
+        assert.match(tarjetas[0].textContent, /Samsung/);
+
+        buscador.value = 'zzz';
+        buscador.dispatchEvent(new document.defaultView.Event('input'));
+        await tick(300);
+        assert.equal(document.querySelectorAll('#lista-catalogo .tarjeta-catalogo').length, 0);
+        assert.match(document.getElementById('lista-catalogo').textContent, /No se encontraron precios/);
+    });
+});
+
+describe('Arranque', () => {
+    test('sin Firebase avisa en pantalla en vez de morir en silencio', async () => {
+        const { window, document, errores } = montarApp({ sinFirebase: true });
+        await tick(10);
+        const aviso = document.getElementById('aviso-dependencias');
+        assert.equal(aviso.hidden, false, 'debe mostrarse el aviso de dependencias');
+        assert.match(aviso.textContent, /Firebase/);
+        assert.equal(window.TechFix.iniciada, false);
+        assert.equal(errores.length, 0, 'no debe haber excepciones sin capturar');
+    });
+});
+
 describe('Robustez', () => {
     test('un error al cambiar estado se informa y no queda silencioso', async () => {
         const { window, swal } = await sesionIniciada({ equipos: { a: equipo() } });
@@ -323,19 +599,31 @@ describe('Robustez', () => {
         assert.ok(swal.llamadas.some((c) => /error/i.test(JSON.stringify(c))), 'debe mostrarse un error al usuario');
     });
 
-    test('el buscador filtra por cliente, IMEI y falla', async () => {
+    test('un cambio de estado sobre un documento borrado no rompe la app', async () => {
+        const { window, db, swal } = await sesionIniciada({ equipos: { a: equipo() } });
+        db._datos.get('equipos').delete('a');
+        await window.TechFix.cambiarEstado('a', 'reparado');
+        await tick(10);
+        assert.ok(swal.llamadas.some((c) => /error/i.test(JSON.stringify(c))));
+        assert.ok(window.TechFix.proyectos().length >= 0, 'la app sigue funcionando');
+    });
+
+    test('el buscador filtra por cliente, IMEI, numero de orden y falla', async () => {
         const { document } = await sesionIniciada({
             equipos: {
-                a: equipo({ cliente: 'Ana Soto', imei: '111' }),
-                b: equipo({ cliente: 'Beto Lara', imei: '222', falla: 'No carga' })
+                a: equipo({ cliente: 'Ana Soto', imei: '111', idOrden: 'TF-251002-001' }),
+                b: equipo({ cliente: 'Beto Lara', imei: '222', falla: 'No carga', idOrden: 'TF-251002-002' })
             }
         });
         const buscador = document.getElementById('buscador');
-        buscador.value = '222';
-        buscador.dispatchEvent(new document.defaultView.Event('input'));
-        await tick(400);
-        const txt = document.getElementById('lista-proyectos').textContent;
-        assert.ok(txt.includes('Beto Lara'));
-        assert.ok(!txt.includes('Ana Soto'));
+
+        for (const [aguja, esperado] of [['222', 'Beto Lara'], ['TF-251002-001', 'Ana Soto'], ['no carga', 'Beto Lara']]) {
+            buscador.value = aguja;
+            buscador.dispatchEvent(new document.defaultView.Event('input'));
+            await tick(400);
+            const texto = document.getElementById('lista-proyectos').textContent;
+            assert.ok(texto.includes(esperado), `"${aguja}" deberia encontrar a ${esperado}`);
+            assert.equal(texto.includes(esperado === 'Ana Soto' ? 'Beto Lara' : 'Ana Soto'), false, `"${aguja}" no debe mostrar el otro equipo`);
+        }
     });
 });
