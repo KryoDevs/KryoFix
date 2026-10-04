@@ -76,7 +76,12 @@ function clasesDefinidas(sheet) {
 // Los prefijos dinamicos ("estado-" + p.estado) no son clases completas: la
 // comprobacion se hace sobre las clases terminadas.
 const completas = (conjunto) => new Set([...conjunto].filter((c) => c && !c.endsWith('-')));
-const usadas = new Set([...completas(clasesUsadas(appJs)), ...completas(clasesUsadas(indexHtml))]);
+const usadas = new Set([
+    ...completas(clasesUsadas(appJs)),
+    ...completas(clasesUsadas(indexHtml)),
+    ...completas(clasesUsadas(statusJs)),
+    ...completas(clasesUsadas(statusHtml))
+]);
 const definidas = clasesDefinidas(css);
 // Clases que vienen de librerias externas o son puramente semanticas
 const IGNORAR = new Set(['swal2-popup', 'swal2-container']);
@@ -195,6 +200,16 @@ for (const m of [...(indexHtml + statusHtml + appJs).matchAll(/https?:\/\/[^\s"'
     void m;
     fail('qr-externo', 'Se sigue usando api.qrserver.com: filtra la URL de cada orden a un tercero y falla sin internet. Usa el QR local.');
 }
+// Scripts cargados dinamicamente con cargarScript('...') tambien deben existir en app/.
+for (const m of appJs.matchAll(/cargarScript\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    const src = m[1];
+    if (/^https?:\/\//.test(src)) {
+        fail('cdn', `app.js carga ${src} desde un CDN con cargarScript(). Sirvelo desde app/vendor/.`);
+    } else if (!existsSync(join(ROOT, 'app', src.replace(/^\.\//, '')))) {
+        fail('script-missing', `app.js carga dinamicamente ${src}, que no existe en app/.`);
+    }
+}
+
 // El QR del ticket debe ser un archivo propio versionado.
 if (/ticket-qr\.png/.test(appJs) && !existsSync(join(ROOT, 'app', 'ticket-qr.png'))) {
     fail('qr-missing', 'app.js usa ticket-qr.png pero el archivo no existe. Ejecuta: npm run qr');
@@ -211,13 +226,31 @@ if (!/vendor\//.test(swJs)) {
 if (/\.count\(\s*\)/.test(appJs)) {
     fail('sdk-count', 'Se usa Query.count(), que no existe en firebase 10.8.1 compat (0.3.26).');
 }
+const cfgApp = (appJs.match(/firebaseConfig\s*=\s*\{([\s\S]*?)\};/) || [])[1] || '';
+const cfgStatus = (statusJs.match(/firebaseConfig\s*=\s*\{([\s\S]*?)\};/) || [])[1] || '';
+if (cfgApp && cfgStatus && cfgApp.replace(/\s+/g, '') !== cfgStatus.replace(/\s+/g, '')) {
+    fail('firebase-config-mismatch', 'firebaseConfig difiere entre app.js y status.js.');
+}
 
 // ---------------------------------------------------------------------------
 // 5d. Ids del DOM referenciados desde el JavaScript
 // Un id mal escrito ($('proyecto-form') cuando el HTML dice otra cosa) no da
 // error: simplemente deja una funcion muerta. Se comprueba en ambas paginas.
 // ---------------------------------------------------------------------------
-const IDS_DINAMICOS = new Set(['pwd-nueva', 'pwd-repetir']); // los crea SweetAlert2
+const IDS_DINAMICOS = new Set([
+    'pwd-nueva',
+    'pwd-repetir',
+    'edit-cliente',
+    'edit-telefono',
+    'edit-falla',
+    'edit-accesorios',
+    'edit-costo',
+    'edit-abono',
+    'edit-cat-marca',
+    'edit-cat-modelo',
+    'edit-cat-rep',
+    'edit-cat-precio'
+]); // los crea SweetAlert2
 for (const [nombreJs, src, nombreHtml, html] of [
     ['app.js', appJs, 'index.html', indexHtml],
     ['status.js', statusJs, 'status.html', statusHtml]

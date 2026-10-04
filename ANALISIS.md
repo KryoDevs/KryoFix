@@ -4,14 +4,17 @@ Este documento tiene dos partes:
 
 - **Parte 1** — la revisión original (commit `d751523`) y su resolución.
 - **Parte 2** — la **segunda auditoría** (commit `5cd5554`), que es la que originó
-  los cambios de la versión actual.
+  los cambios de la versión anterior.
+- **Parte 3** — la **tercera auditoría y rediseño integral Enterprise**, con
+  corrección de bugs de runtime, nuevas funcionalidades operativas y nuevo
+  sistema de diseño visual.
 
 ## Estado de la verificación automática
 
 ```
 ESLint ................ 0 errores, 0 avisos
 Auditoría estática .... 0 errores, 0 avisos
-Tests (jsdom) ......... 67 / 67   (antes: 28 / 28)
+Tests (jsdom) ......... 75 / 75   (antes: 67 / 67)
 ```
 
 Los tres comandos se ejecutan en cada push y cada PR con
@@ -258,5 +261,70 @@ cualquier `setTimeout`.
 5. **Roles y multi-usuario** (dueño / técnico / recepción) con *custom claims*.
 6. **Borrado lógico** (papelera) en lugar del borrado definitivo actual sobre un
    documento con valor legal y contable.
-7. **Historial visible en la UI**: los datos ya se guardan (`historial`), falta la
-   línea de tiempo interna y las métricas de tiempo por estado.
+7. **Historial visible en la UI**: Resuelto en la Parte 3 (`verHistorial`).
+
+---
+
+# Parte 3 — Tercera auditoría, mejoras funcionales y rediseño Enterprise
+
+Durante el ciclo de auditoría profunda y mejora continua se detectaron y
+resolvieron los siguientes hallazgos críticos y funcionales:
+
+## 3.1 🔴 Bugs de código detectados y corregidos
+
+1. **QR dinámico roto en producción (`vendor/qrcode.min.js` -> 404):**
+   `app/app.js` definía `URL_QR_LIB = 'vendor/qrcode.min.js'`, mientras que el
+   archivo real copiado por `tools/vendor.mjs` y precacheado por `app/sw.js` era
+   `vendor/qrcode.js`. Al fallar en silencio `cargarScript(URL_QR_LIB)`, ningún
+   ticket impreso en producción generaba el QR dinámico con el ID de la orden.
+   - **Solución:** se corrigió `URL_QR_LIB = 'vendor/qrcode.js'` y se añadió en
+     `tools/audit.mjs` la verificación de que todo archivo pasado a
+     `cargarScript(...)` exista físicamente en `app/`.
+2. **Botón `🔑 Contraseña` desconectado del evento `click`:**
+   `cambiarContrasena()` existía en `app.js` pero no estaba enlazado a
+   `#btn-contrasena`. Ahora queda conectado con `escuchar('btn-contrasena', 'click', cambiarContrasena)`.
+3. **Portal público `status.html` sin buscador manual para el QR estático:**
+   Cuando un cliente entraba a `status.html` sin `?id=` (por ejemplo, desde el QR
+   estático de respaldo `ticket-qr.png`), solo veía un mensaje de error y no
+   tenía dónde escribir el código de su orden.
+   - **Solución:** se incorporó `#form-buscar-orden` con `#input-codigo-orden`
+     para consultar cualquier orden en vivo sin recargar la página.
+
+## 3.2 🚀 Nuevas funcionalidades operativas implementadas
+
+1. **Edición de órdenes en taller (`editarProyecto` / botón `✏️ Editar`):**
+   Permite actualizar cliente, teléfono, diagnóstico/falla, condición/accesorios,
+   presupuesto total (`costo`) y `abono` sin recrear la orden ni perder el QR
+   entregado al cliente.
+2. **Edición de precios en el Catálogo (`editarCatalogo`):**
+   Permite modificar precios o descripciones del tarifario con un clic.
+3. **Visor de Historial y Trazabilidad (`verHistorial` / botón `🕒 Historial`):**
+   Muestra la línea de tiempo completa de estados por los que pasó el equipo con
+   sus fechas.
+4. **Nuevos KPIs financieros y operativos interactivos:**
+   Se sumaron **Listos para Retiro** (`#stat-listos`) y **Saldo por Cobrar**
+   (`#stat-pendiente`) al dashboard, además de filtrado rápido al hacer clic en
+   las tarjetas de métricas.
+5. **Ordenamiento multicriterio (`#ordenar-proyectos`) y contadores en vivo:**
+   Orden por más recientes, más antiguos, mayor saldo pendiente o cliente (A-Z),
+   junto a píldoras contadoras (`#contador-resultados`, `#contador-catalogo`).
+6. **Formulario de ingreso colapsable (`#btn-toggle-ingreso`):**
+   Permite minimizar o expandir el formulario de recepción para priorizar el
+   tablero de trabajo diario.
+7. **Portal de seguimiento del cliente mejorado (`status.html` / `status.js`):**
+   Barra de progreso porcentual (`20%` a `100%`), distintivo de estado actual,
+   fecha de última actualización, subtítulos explicativos por etapa y conmutador
+   de tema claro/oscuro.
+
+## 3.3 🎨 Rediseño visual profesional (Enterprise Design System)
+
+- Sistema de tokens CSS semánticos para modo claro y oscuro (`estilos.css`),
+  eliminando estilos inline desconectados en `status.html`.
+- Tipografía moderna con números tabulares (`tabular-nums`) para importes,
+  métricas y códigos de orden (`TF-YYMMDD-NNN`).
+- Tarjetas de trabajo rediseñadas con jerarquía clara (encabezado de estado,
+  chip monoespaciado de orden, bloque resaltado de falla, desglose financiero y
+  botonera de acciones equilibrada).
+- Sincronización verificada por `tools/audit.mjs` sobre las 4 piezas (`index.html`,
+  `app.js`, `status.html`, `status.js`) y consistencia de `firebaseConfig`.
+

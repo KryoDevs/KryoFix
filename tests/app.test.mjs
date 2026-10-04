@@ -627,3 +627,116 @@ describe('Robustez', () => {
         }
     });
 });
+
+describe('Nuevas funcionalidades: edicion, historial, ordenamiento y KPIs', () => {
+    test('URL_QR_LIB apunta a vendor/qrcode.js existente', async () => {
+        const { window } = await sesionIniciada();
+        assert.equal(window.TechFix.URL_QR_LIB, 'vendor/qrcode.js');
+    });
+
+    test('editarProyecto actualiza presupuesto, abono y falla, y rechaza abono mayor al costo', async () => {
+        const { window, db } = await sesionIniciada({
+            equipos: { a: equipo({ costo: 0, abono: 0, falla: 'Por diagnosticar' }) }
+        });
+
+        const invalido = await window.TechFix.editarProyecto('a', { costo: 30000, abono: 50000 });
+        assert.equal(invalido, false, 'no debe aceptar abono mayor que el presupuesto');
+        assert.equal(db._datos.get('equipos').get('a').costo, 0);
+
+        const ok = await window.TechFix.editarProyecto('a', {
+            cliente: 'Juan Perez Editado',
+            telefono: '+56 9 9999 8888',
+            falla: 'Cambio de IC de carga',
+            costo: 45000,
+            abono: 15000
+        });
+        assert.equal(ok, true);
+        const actualizado = db._datos.get('equipos').get('a');
+        assert.equal(actualizado.cliente, 'Juan Perez Editado');
+        assert.equal(actualizado.telefono, '56999998888');
+        assert.equal(actualizado.falla, 'Cambio de IC de carga');
+        assert.equal(actualizado.costo, 45000);
+        assert.equal(actualizado.abono, 15000);
+    });
+
+    test('editarCatalogo actualiza el precio de un servicio existente', async () => {
+        const { window, db } = await sesionIniciada({
+            catalogo: {
+                c1: { uid: USUARIO.uid, marca: 'Apple', modelo: 'iPhone 13', reparacion: 'Pantalla', precio: 85000 }
+            }
+        });
+        const ok = await window.TechFix.editarCatalogo('c1', { precio: 79000, reparacion: 'Pantalla OLED Original' });
+        assert.equal(ok, true);
+        const item = db._datos.get('catalogo').get('c1');
+        assert.equal(item.precio, 79000);
+        assert.equal(item.reparacion, 'Pantalla OLED Original');
+    });
+
+    test('verHistorial muestra las etapas registradas de la orden', async () => {
+        const { window, swal } = await sesionIniciada({
+            equipos: {
+                a: equipo({
+                    historial: [
+                        { estado: 'ingresado', en: 1700000000000, por: USUARIO.uid },
+                        { estado: 'revision', en: 1700003600000, por: USUARIO.uid }
+                    ]
+                })
+            }
+        });
+        const entradas = window.TechFix.verHistorial('a');
+        assert.equal(entradas.length, 2);
+        assert.ok(swal.llamadas.some((c) => /Historial/i.test(String(c.title || ''))));
+    });
+
+    test('el selector de ordenamiento permite ordenar por mayor saldo pendiente y por cliente', async () => {
+        const { document } = await sesionIniciada({
+            equipos: {
+                a: equipo({ cliente: 'Zoe', costo: 20000, abono: 15000, timestamp: 200 }),
+                b: equipo({ cliente: 'Aldo', costo: 90000, abono: 10000, timestamp: 100 })
+            }
+        });
+        const ordenar = document.getElementById('ordenar-proyectos');
+        ordenar.value = 'saldo';
+        ordenar.dispatchEvent(new document.defaultView.Event('change'));
+        await tick(10);
+
+        let titulos = [...document.querySelectorAll('#lista-proyectos h3')].map((n) => n.textContent);
+        assert.deepEqual(titulos, ['Aldo', 'Zoe'], 'Aldo tiene mayor saldo ($80.000 vs $5.000)');
+
+        ordenar.value = 'recientes';
+        ordenar.dispatchEvent(new document.defaultView.Event('change'));
+        await tick(10);
+        titulos = [...document.querySelectorAll('#lista-proyectos h3')].map((n) => n.textContent);
+        assert.deepEqual(titulos, ['Zoe', 'Aldo'], 'Zoe es mas reciente');
+    });
+
+    test('el dashboard calcula listos para retiro y saldo pendiente por cobrar', async () => {
+        const { document } = await sesionIniciada({
+            equipos: {
+                a: equipo({ estado: 'ingresado', costo: 50000, abono: 10000 }),
+                b: equipo({ estado: 'reparado', costo: 30000, abono: 5000 }),
+                c: equipo({ estado: 'entregado', costo: 40000, abono: 40000 })
+            }
+        });
+        assert.equal(document.getElementById('stat-activos').textContent, '2');
+        assert.equal(document.getElementById('stat-listos').textContent, '1');
+        assert.ok(
+            document.getElementById('stat-pendiente').textContent.includes('65'),
+            'el saldo por cobrar activo debe ser 40.000 + 25.000 = 65.000'
+        );
+    });
+
+    test('el formulario de ingreso puede minimizarse y expandirse', async () => {
+        const { document } = await sesionIniciada();
+        const btn = document.getElementById('btn-toggle-ingreso');
+        const cuerpo = document.getElementById('cuerpo-ingreso');
+        assert.equal(cuerpo.hidden, false);
+        btn.click();
+        assert.equal(cuerpo.hidden, true);
+        assert.equal(btn.getAttribute('aria-expanded'), 'false');
+        btn.click();
+        assert.equal(cuerpo.hidden, false);
+        assert.equal(btn.getAttribute('aria-expanded'), 'true');
+    });
+});
+

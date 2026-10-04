@@ -54,8 +54,8 @@
     const PREFIJO_ORDEN = 'TF-';
     const CLAVE_CONTADOR = 'techfix.contadorOrden';
 
-    // Libreria de QR servida desde el propio origen (nada de CDNs).
-    const URL_QR_LIB = 'vendor/qrcode.min.js';
+    // Libreria de QR servida desde el propio origen (sincronizada con tools/vendor.mjs y sw.js).
+    const URL_QR_LIB = 'vendor/qrcode.js';
     const QR_ESTATICO = 'ticket-qr.png';
 
     // ========================
@@ -136,11 +136,16 @@
     const listaProyectos = $('lista-proyectos');
     const buscador = $('buscador');
     const filtroEstado = $('filtro-estado');
+    const ordenarProyectos = $('ordenar-proyectos');
+    const contadorResultados = $('contador-resultados');
+    const contadorCatalogo = $('contador-catalogo');
     const capaImpresion = $('capa-impresion');
     const loader = $('loader');
     const statActivos = $('stat-activos');
+    const statListos = $('stat-listos');
     const statReparados = $('stat-reparados');
     const statIngresos = $('stat-ingresos');
+    const statPendiente = $('stat-pendiente');
     const modalFirma = $('modal-firma');
     const canvas = $('canvas-firma');
     const ctx = canvas ? canvas.getContext('2d') : null;
@@ -326,7 +331,7 @@
     }
 
     // ========================
-    // 1. TEMA
+    // 1. TEMA Y PANEL COLAPSABLE
     // (el valor inicial ya lo aplica un script en <head> para evitar el destello)
     // ========================
     function etiquetaTema(tema) {
@@ -350,6 +355,16 @@
         });
     }
 
+    escuchar('btn-toggle-ingreso', 'click', () => {
+        const cuerpo = $('cuerpo-ingreso');
+        const boton = $('btn-toggle-ingreso');
+        if (!cuerpo || !boton) return;
+        const ocultar = !cuerpo.hidden;
+        cuerpo.hidden = ocultar;
+        boton.setAttribute('aria-expanded', String(!ocultar));
+        boton.textContent = ocultar ? '➕ Nuevo ingreso' : 'Minimizar formulario';
+    });
+
     // ========================
     // 2. AUTENTICACION
     // ========================
@@ -371,8 +386,12 @@
         filtroCatalogo = '';
         if (listaProyectos) listaProyectos.innerHTML = '';
         if (statActivos) statActivos.textContent = '0';
+        if (statListos) statListos.textContent = '0';
         if (statReparados) statReparados.textContent = '0';
         if (statIngresos) statIngresos.textContent = CLP(0);
+        if (statPendiente) statPendiente.textContent = CLP(0);
+        if (contadorResultados) contadorResultados.textContent = '0 ordenes';
+        if (contadorCatalogo) contadorCatalogo.textContent = '0 servicios';
         renderizarAvisos();
     }
 
@@ -506,6 +525,7 @@
             }
         }
     }
+    escuchar('btn-contrasena', 'click', cambiarContrasena);
 
     // ========================
     // 3. BASE DE DATOS
@@ -559,16 +579,38 @@
         const mes = ahora.getMonth();
         const anio = ahora.getFullYear();
 
+        const activos = proyectos.filter((p) => p.estado !== 'entregado');
+        const listos = proyectos.filter((p) => p.estado === 'reparado');
         const cerradosEsteMes = proyectos.filter((p) => {
             if (p.estado !== 'reparado' && p.estado !== 'entregado') return false;
             const f = new Date(fechaDeCierre(p));
             return f.getMonth() === mes && f.getFullYear() === anio;
         });
 
-        statActivos.textContent = String(proyectos.filter((p) => p.estado !== 'entregado').length);
-        statReparados.textContent = String(cerradosEsteMes.length);
-        statIngresos.textContent = CLP(cerradosEsteMes.reduce((sum, p) => sum + (Number(p.costo) || 0), 0));
+        const saldoPorCobrar = activos.reduce(
+            (sum, p) => sum + Math.max(0, (Number(p.costo) || 0) - (Number(p.abono) || 0)),
+            0
+        );
+
+        if (statActivos) statActivos.textContent = String(activos.length);
+        if (statListos) statListos.textContent = String(listos.length);
+        if (statReparados) statReparados.textContent = String(cerradosEsteMes.length);
+        if (statIngresos) {
+            statIngresos.textContent = CLP(cerradosEsteMes.reduce((sum, p) => sum + (Number(p.costo) || 0), 0));
+        }
+        if (statPendiente) statPendiente.textContent = CLP(saldoPorCobrar);
     }
+
+    // Clic en tarjetas KPI del dashboard para filtrar rapidamente
+    escuchar(document, 'click', (e) => {
+        const card = e.target.closest && e.target.closest('[data-filtro-kpi]');
+        if (!card || !filtroEstado) return;
+        const destino = card.getAttribute('data-filtro-kpi');
+        if (destino) {
+            filtroEstado.value = destino;
+            renderizarProyectos();
+        }
+    });
 
     /**
      * Momento de cierre de la orden: la fecha de reparacion real y, para datos
@@ -624,8 +666,8 @@
         }
 
         tarjeta.appendChild(el('h3', { text: p.cliente || 'Sin nombre' }));
-        tarjeta.appendChild(el('p', { text: [p.equipo, p.modelo].filter(Boolean).join(' - ') }));
-        if (p.idOrden) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'Orden: ' + p.idOrden }));
+        tarjeta.appendChild(el('p', { class: 'tarjeta-dispositivo', text: [p.equipo, p.modelo].filter(Boolean).join(' - ') }));
+        if (p.idOrden) tarjeta.appendChild(el('p', { class: 'detalle-extra orden-chip', text: 'Orden: ' + p.idOrden }));
         if (p.imei) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'IMEI: ' + p.imei }));
 
         if (p.pin) {
@@ -649,7 +691,7 @@
             tarjeta.appendChild(fila);
         }
 
-        tarjeta.appendChild(el('p', { text: 'Falla: ' + (p.falla || 'Sin detalle') }));
+        tarjeta.appendChild(el('p', { class: 'tarjeta-falla', text: 'Falla: ' + (p.falla || 'Sin detalle') }));
         if (p.accesorios) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: p.accesorios }));
 
         const precio = el('p', { class: 'precio', text: 'Costo: ' + CLP(p.costo) });
@@ -727,6 +769,20 @@
                 attrs: { type: 'button', 'data-accion': 'compartir', 'data-id': p.id }
             })
         );
+        acciones.appendChild(
+            el('button', {
+                class: 'btn-icon btn-editar',
+                text: '✏️ Editar',
+                attrs: { type: 'button', 'data-accion': 'editar', 'data-id': p.id }
+            })
+        );
+        acciones.appendChild(
+            el('button', {
+                class: 'btn-icon btn-historial',
+                text: '🕒 Historial',
+                attrs: { type: 'button', 'data-accion': 'historial', 'data-id': p.id }
+            })
+        );
         if (p.estado !== 'entregado') {
             acciones.appendChild(
                 el('button', {
@@ -747,11 +803,13 @@
         return tarjeta;
     }
 
-    /** Ordenes que cumplen el buscador y el filtro activos. */
+    /** Ordenes que cumplen el buscador, el filtro y el criterio de orden activos. */
     function proyectosFiltrados() {
         const txt = (buscador && buscador.value ? buscador.value : '').trim().toLowerCase();
         const filtro = filtroEstado ? filtroEstado.value : 'activos';
-        return proyectos.filter((p) => {
+        const criterio = ordenarProyectos ? ordenarProyectos.value : 'recientes';
+
+        const lista = proyectos.filter((p) => {
             const campos = [p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
                 .filter(Boolean)
                 .join(' ')
@@ -761,11 +819,27 @@
             if (filtro !== 'todos') return p.estado === filtro;
             return true;
         });
+
+        if (criterio === 'antiguos') {
+            lista.sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+        } else if (criterio === 'saldo') {
+            lista.sort((a, b) => {
+                const sa = (Number(a.costo) || 0) - (Number(a.abono) || 0);
+                const sb = (Number(b.costo) || 0) - (Number(b.abono) || 0);
+                return sb - sa;
+            });
+        } else if (criterio === 'cliente') {
+            lista.sort((a, b) => String(a.cliente || '').localeCompare(String(b.cliente || '')));
+        }
+        return lista;
     }
 
     function renderizarProyectos() {
         if (!listaProyectos) return;
         const filtrados = proyectosFiltrados();
+        if (contadorResultados) {
+            contadorResultados.textContent = filtrados.length + (filtrados.length === 1 ? ' orden' : ' ordenes');
+        }
 
         listaProyectos.innerHTML = '';
         if (filtrados.length === 0) {
@@ -833,6 +907,12 @@
                 break;
             case 'compartir':
                 compartirTicket(id);
+                break;
+            case 'editar':
+                editarProyecto(id);
+                break;
+            case 'historial':
+                verHistorial(id);
                 break;
             case 'entregar':
                 archivarProyecto(id);
@@ -1113,7 +1193,7 @@
     });
 
     // ========================
-    // 6. ACCIONES DE TARJETA
+    // 6. ACCIONES DE TARJETA (ESTADO, EDICION, HISTORIAL, ENTREGA)
     // ========================
     /** Entrada de historial lista para arrayUnion (null si no esta soportado). */
     function entradaHistorial(estado, uid) {
@@ -1169,6 +1249,116 @@
             avisarError('No se pudo cambiar el estado', err);
             renderizarProyectos(); // revierte el select a su valor real
         }
+    }
+
+    /**
+     * Edita los datos operativos o financieros de una orden existente (por
+     * ejemplo, asignar presupuesto tras diagnostico o registrar un abono).
+     */
+    async function editarProyecto(id, datosDirectos = null) {
+        const previo = proyectos.find((x) => x.id === id);
+        if (!previo) return false;
+
+        let valores = datosDirectos;
+        if (!valores && typeof Swal !== 'undefined') {
+            const respuesta = await Swal.fire({
+                title: 'Editar orden ' + mostrarIdOrden(previo),
+                html:
+                    '<label for="edit-cliente" class="etiqueta-modal">Cliente</label>' +
+                    '<input id="edit-cliente" type="text" maxlength="120" value="' + escapeHtml(previo.cliente || '') + '">' +
+                    '<label for="edit-telefono" class="etiqueta-modal">Telefono (WhatsApp)</label>' +
+                    '<input id="edit-telefono" type="tel" value="' + escapeHtml(previo.telefono || '') + '">' +
+                    '<label for="edit-falla" class="etiqueta-modal">Falla / Diagnostico</label>' +
+                    '<input id="edit-falla" type="text" maxlength="200" value="' + escapeHtml(previo.falla || '') + '">' +
+                    '<label for="edit-accesorios" class="etiqueta-modal">Condicion y accesorios</label>' +
+                    '<input id="edit-accesorios" type="text" maxlength="200" value="' + escapeHtml(previo.accesorios || '') + '">' +
+                    '<label for="edit-costo" class="etiqueta-modal">Presupuesto total ($)</label>' +
+                    '<input id="edit-costo" type="number" min="0" step="1" value="' + Number(previo.costo || 0) + '">' +
+                    '<label for="edit-abono" class="etiqueta-modal">Abono ($)</label>' +
+                    '<input id="edit-abono" type="number" min="0" step="1" value="' + Number(previo.abono || 0) + '">',
+                showCancelButton: true,
+                confirmButtonText: 'Guardar cambios',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const cliente = document.getElementById('edit-cliente').value.trim();
+                    const telefono = normalizarTelefono(document.getElementById('edit-telefono').value);
+                    const falla = document.getElementById('edit-falla').value.trim();
+                    const accesorios = document.getElementById('edit-accesorios').value.trim();
+                    const costo = Number(document.getElementById('edit-costo').value);
+                    const abono = Number(document.getElementById('edit-abono').value || 0);
+                    if (!cliente) return Swal.showValidationMessage('El nombre del cliente es obligatorio.');
+                    if (telefono.length < 8) return Swal.showValidationMessage('El telefono debe tener al menos 8 digitos.');
+                    if (!Number.isFinite(costo) || costo < 0) return Swal.showValidationMessage('El presupuesto no puede ser negativo.');
+                    if (!Number.isFinite(abono) || abono < 0 || abono > costo) {
+                        return Swal.showValidationMessage('El abono debe estar entre 0 y el presupuesto total.');
+                    }
+                    return { cliente, telefono, falla, accesorios, costo, abono };
+                }
+            });
+            valores = respuesta && respuesta.value ? respuesta.value : null;
+        }
+        if (!valores) return false;
+
+        const cliente = String(valores.cliente ?? previo.cliente ?? '').trim();
+        const telefono = normalizarTelefono(valores.telefono ?? previo.telefono ?? '');
+        const falla = String(valores.falla ?? previo.falla ?? '').trim();
+        const accesorios = String(valores.accesorios ?? previo.accesorios ?? '').trim();
+        const costo = Number(valores.costo ?? previo.costo ?? 0);
+        const abono = Number(valores.abono ?? previo.abono ?? 0);
+
+        if (!cliente || telefono.length < 8 || !Number.isFinite(costo) || costo < 0 || !Number.isFinite(abono) || abono < 0 || abono > costo) {
+            if (typeof Swal !== 'undefined') Swal.fire('Datos invalidos', 'Revisa el cliente, telefono y montos.', 'warning');
+            return false;
+        }
+
+        try {
+            const uid = currentUser ? currentUser.uid : previo.uid;
+            await db.collection(COL_EQUIPOS).doc(id).update({
+                uid,
+                cliente,
+                telefono,
+                falla,
+                accesorios,
+                costo,
+                abono
+            });
+            toast('success', 'Orden actualizada');
+            return true;
+        } catch (err) {
+            avisarError('No se pudo actualizar la orden', err);
+            return false;
+        }
+    }
+
+    /**
+     * Muestra la trazabilidad completa de estados de la orden.
+     */
+    function verHistorial(id) {
+        const p = proyectos.find((x) => x.id === id);
+        if (!p || typeof Swal === 'undefined') return null;
+
+        const entradas = Array.isArray(p.historial) && p.historial.length
+            ? p.historial
+            : [{ estado: p.estado || 'ingresado', en: p.timestamp || Date.now() }];
+
+        const itemsHtml = entradas
+            .map((item) => {
+                const etiqueta = escapeHtml(ESTADO_TEXTO[item.estado] || item.estado || 'Estado');
+                const fecha = escapeHtml(fechaCorta(item.en));
+                return '<li class="historial-item"><strong>' + etiqueta + '</strong> <span>' + fecha + '</span></li>';
+            })
+            .join('');
+
+        Swal.fire({
+            title: 'Historial · ' + mostrarIdOrden(p),
+            html:
+                '<div class="historial-modal">' +
+                '<p class="detalle-extra">' + escapeHtml([p.cliente, p.equipo, p.modelo].filter(Boolean).join(' · ')) + '</p>' +
+                '<ul class="historial-lista">' + itemsHtml + '</ul>' +
+                '</div>',
+            confirmButtonText: 'Cerrar'
+        });
+        return entradas;
     }
 
     function archivarProyecto(id) {
@@ -1272,7 +1462,7 @@
      * Dibuja el QR del ticket en el nodo dado.
      * 1) usa la libreria local (el QR lleva el id exacto de la orden);
      * 2) si no esta disponible, cae al QR estatico versionado (apunta a la
-     *    pagina de seguimiento: el cliente escanea y escribe su numero de orden);
+     *    pagina de seguimiento: el cliente escanea y escribe su codigo);
      * 3) en el ticket, la URL siempre queda impresa como texto de respaldo.
      */
     function ponerQr(destino, url) {
@@ -1663,6 +1853,10 @@
             [c.marca, c.modelo, c.reparacion].filter(Boolean).join(' ').toLowerCase().includes(txt)
         );
 
+        if (contadorCatalogo) {
+            contadorCatalogo.textContent = filtrados.length + (filtrados.length === 1 ? ' servicio' : ' servicios');
+        }
+
         if (!filtrados.length) {
             lista.appendChild(
                 el('p', {
@@ -1688,6 +1882,17 @@
                 card.appendChild(
                     el('div', { class: 'acciones-tarjeta' }, [
                         el('button', {
+                            class: 'btn-icon btn-editar',
+                            text: '✏️ Editar',
+                            attrs: {
+                                type: 'button',
+                                'data-accion': 'editar-catalogo',
+                                'data-id': data.id,
+                                'aria-label':
+                                    'Editar el precio de ' + [data.marca, data.modelo].filter(Boolean).join(' ')
+                            }
+                        }),
+                        el('button', {
                             class: 'btn-icon btn-eliminar',
                             text: '🗑 Eliminar',
                             attrs: {
@@ -1707,8 +1912,13 @@
 
     const listaCatalogo = $('lista-catalogo');
     escuchar(listaCatalogo, 'click', (e) => {
-        const b = e.target.closest && e.target.closest('[data-accion="borrar-catalogo"]');
-        if (b) eliminarCatalogo(b.getAttribute('data-id'));
+        const bBorrar = e.target.closest && e.target.closest('[data-accion="borrar-catalogo"]');
+        if (bBorrar) {
+            eliminarCatalogo(bBorrar.getAttribute('data-id'));
+            return;
+        }
+        const bEditar = e.target.closest && e.target.closest('[data-accion="editar-catalogo"]');
+        if (bEditar) editarCatalogo(bEditar.getAttribute('data-id'));
     });
 
     const catBuscador = $('cat-buscador');
@@ -1720,6 +1930,61 @@
             renderizarCatalogo();
         }, 200)
     );
+
+    async function editarCatalogo(id, datosDirectos = null) {
+        const previo = catalogoDB.find((x) => x.id === id);
+        if (!previo) return false;
+
+        let valores = datosDirectos;
+        if (!valores && typeof Swal !== 'undefined') {
+            const respuesta = await Swal.fire({
+                title: 'Editar precio de catalogo',
+                html:
+                    '<label for="edit-cat-marca" class="etiqueta-modal">Marca</label>' +
+                    '<input id="edit-cat-marca" type="text" maxlength="60" value="' + escapeHtml(previo.marca || '') + '">' +
+                    '<label for="edit-cat-modelo" class="etiqueta-modal">Modelo</label>' +
+                    '<input id="edit-cat-modelo" type="text" maxlength="80" value="' + escapeHtml(previo.modelo || '') + '">' +
+                    '<label for="edit-cat-rep" class="etiqueta-modal">Reparacion</label>' +
+                    '<input id="edit-cat-rep" type="text" maxlength="120" value="' + escapeHtml(previo.reparacion || '') + '">' +
+                    '<label for="edit-cat-precio" class="etiqueta-modal">Precio ($)</label>' +
+                    '<input id="edit-cat-precio" type="number" min="0" step="1" value="' + Number(previo.precio || 0) + '">',
+                showCancelButton: true,
+                confirmButtonText: 'Guardar',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const marca = document.getElementById('edit-cat-marca').value.trim();
+                    const modelo = document.getElementById('edit-cat-modelo').value.trim();
+                    const reparacion = document.getElementById('edit-cat-rep').value.trim();
+                    const precio = Number(document.getElementById('edit-cat-precio').value);
+                    if (!marca || !modelo || !reparacion) {
+                        return Swal.showValidationMessage('Completa marca, modelo y reparacion.');
+                    }
+                    if (!Number.isFinite(precio) || precio < 0) {
+                        return Swal.showValidationMessage('El precio no puede ser negativo.');
+                    }
+                    return { marca, modelo, reparacion, precio };
+                }
+            });
+            valores = respuesta && respuesta.value ? respuesta.value : null;
+        }
+        if (!valores) return false;
+
+        const marca = String(valores.marca ?? previo.marca ?? '').trim();
+        const modelo = String(valores.modelo ?? previo.modelo ?? '').trim();
+        const reparacion = String(valores.reparacion ?? previo.reparacion ?? '').trim();
+        const precio = Number(valores.precio ?? previo.precio ?? 0);
+        if (!marca || !modelo || !reparacion || !Number.isFinite(precio) || precio < 0) return false;
+
+        try {
+            const uid = currentUser ? currentUser.uid : previo.uid;
+            await db.collection(COL_CATALOGO).doc(id).update({ uid, marca, modelo, reparacion, precio });
+            toast('success', 'Catalogo actualizado');
+            return true;
+        } catch (err) {
+            avisarError('No se pudo actualizar el precio', err);
+            return false;
+        }
+    }
 
     async function eliminarCatalogo(id) {
         const r = await Swal.fire({
@@ -1836,10 +2101,11 @@
     });
 
     // ========================
-    // 12. BUSCADOR Y FILTRO
+    // 12. BUSCADOR, FILTRO Y ORDENAMIENTO
     // ========================
     escuchar(buscador, 'input', debounce(renderizarProyectos, 250));
     escuchar(filtroEstado, 'change', renderizarProyectos);
+    escuchar(ordenarProyectos, 'change', renderizarProyectos);
 
     // ========================
     // 13. EXPORTACION A CSV
@@ -2014,6 +2280,7 @@
         ESTADOS,
         ESTADO_TEXTO,
         PLAZO_ENTREGA_DIAS,
+        URL_QR_LIB,
         migrar,
         escapeHtml,
         normalizarTelefono,
@@ -2023,8 +2290,11 @@
         construirBoleta,
         compartirTicket,
         cambiarEstado,
+        editarProyecto,
+        verHistorial,
         archivarProyecto,
         eliminarProyectoPermanente,
+        editarCatalogo,
         eliminarCatalogo,
         revelarPin,
         verFoto,

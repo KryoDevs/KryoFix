@@ -3,124 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estado de tu reparacion - TechFix</title>
-    <meta name="description" content="Consulta en tiempo real el estado de tu equipo en el taller.">
+    <title>Seguimiento de Orden — TechFix Tracker Pro</title>
+    <meta name="description" content="Consulta en tiempo real el estado de tu equipo en el laboratorio tecnico.">
     <meta name="theme-color" content="#0f172a">
     <meta name="robots" content="noindex">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <style>
-        :root { color-scheme: dark; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
-            margin: 0;
-            padding: 20px 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
-        .status-container {
-            background: #1e293b;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-            border-top: 5px solid #3b82f6;
-        }
-        .brand { margin-bottom: 20px; }
-        .brand h1 { margin: 0; color: #3b82f6; font-size: 24px; }
-        .brand p { margin: 5px 0 0 0; font-size: 14px; color: #94a3b8; }
-        .device-info {
-            background: #0f172a;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-        }
-        .device-info h2 { margin: 0 0 5px 0; font-size: 18px; }
-        .device-info p { margin: 0; color: #94a3b8; font-size: 14px; }
-
-        .timeline { max-width: 260px; margin: 0 auto; text-align: left; list-style: none; padding: 0; }
-        .step {
-            display: flex;
-            align-items: center;
-            margin-bottom: 18px;
-            opacity: 0.4;
-            transition: opacity 0.3s;
-        }
-        .step.active { opacity: 1; }
-        .step-icon {
-            width: 35px; height: 35px;
-            border-radius: 50%;
-            background: #334155;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-right: 15px;
-            font-size: 16px;
-            flex: 0 0 auto;
-        }
-        .step.active .step-icon { background: #3b82f6; box-shadow: 0 0 15px rgba(59,130,246,0.6); }
-        .step-text { font-weight: bold; font-size: 15px; }
-
-        .loader { margin: 20px 0; color: #3b82f6; font-weight: bold; }
-        .error-msg { color: #fca5a5; font-weight: bold; line-height: 1.5; }
-        .aviso-listo { color: #10b981; font-weight: bold; margin-top: 20px; }
-        .mensaje-estado { color: #cbd5e1; font-size: 14px; line-height: 1.5; margin: 18px 0 0; }
-        .footer { margin-top: 30px; font-size: 12px; color: #64748b; }
-
-        @media (prefers-reduced-motion: reduce) {
-            .step { transition: none; }
-        }
-    </style>
+    <script src="tema.js"></script>
+    <link rel="stylesheet" href="estilos.css">
 </head>
-<body>
+<body class="status-page-body">
 
     <main class="status-container">
-        <div class="brand">
-            <h1>🔧 TechFix Tracker</h1>
-            <p>Seguimiento de reparacion</p>
+        <div class="status-topbar">
+            <div class="status-brand-inline">
+                <img src="logo.jpg" alt="" class="brand-logo-status" width="36" height="36">
+                <div class="brand">
+                    <h1>TechFix Tracker</h1>
+                    <p>Portal de Seguimiento en Vivo</p>
+                </div>
+            </div>
+            <button type="button" id="btn-status-theme" class="btn-icon btn-status-tema" aria-label="Cambiar tema">🌓</button>
         </div>
 
         <p id="loader" class="loader" role="status">Buscando tu equipo...</p>
 
         <div id="content" style="display: none;">
             <div class="device-info">
+                <div class="device-info-top">
+                    <span id="badge-estado-actual" class="badge-estado estado-ingresado">En taller</span>
+                    <span class="device-order-code">Orden <strong id="lbl-id"></strong></span>
+                </div>
                 <h2 id="lbl-modelo">Modelo</h2>
-                <p>N&ordm; de orden: <span id="lbl-id"></span></p>
+                <p id="lbl-actualizado" class="device-updated">Sincronizado en tiempo real</p>
+
+                <div class="status-progress-wrap" aria-hidden="true">
+                    <div class="status-progress-labels">
+                        <span>Avance del servicio</span>
+                        <span id="progreso-porcentaje">20%</span>
+                    </div>
+                    <div class="status-progress-track">
+                        <div id="progreso-barra" class="status-progress-fill"></div>
+                    </div>
+                </div>
             </div>
 
             <ol class="timeline" aria-label="Avance de la reparacion">
                 <li class="step" id="step-ingresado">
                     <span class="step-icon" aria-hidden="true">📥</span>
-                    <span class="step-text">Ingresado al taller</span>
+                    <div class="step-body">
+                        <span class="step-text">Ingresado al taller</span>
+                        <span class="step-sub">Recepcion e inspeccion inicial</span>
+                    </div>
                 </li>
                 <li class="step" id="step-revision">
                     <span class="step-icon" aria-hidden="true">🔍</span>
-                    <span class="step-text">En revision tecnica</span>
+                    <div class="step-body">
+                        <span class="step-text">En revision tecnica</span>
+                        <span class="step-sub">Diagnostico en laboratorio</span>
+                    </div>
                 </li>
                 <li class="step" id="step-repuesto">
                     <span class="step-icon" aria-hidden="true">⏳</span>
-                    <span class="step-text">Esperando repuestos</span>
+                    <div class="step-body">
+                        <span class="step-text">Esperando repuestos</span>
+                        <span class="step-sub">Pieza en transito o asignacion</span>
+                    </div>
                 </li>
                 <li class="step" id="step-reparado">
                     <span class="step-icon" aria-hidden="true">✅</span>
-                    <span class="step-text">Listo para retirar</span>
+                    <div class="step-body">
+                        <span class="step-text">Listo para retirar</span>
+                        <span class="step-sub">Pruebas de calidad superadas</span>
+                    </div>
                 </li>
                 <li class="step" id="step-entregado">
                     <span class="step-icon" aria-hidden="true">📦</span>
-                    <span class="step-text">Entregado</span>
+                    <div class="step-body">
+                        <span class="step-text">Entregado</span>
+                        <span class="step-sub">Orden finalizada con conformidad</span>
+                    </div>
                 </li>
             </ol>
 
             <p id="msg-estado" class="mensaje-estado" aria-live="polite"></p>
 
             <p id="msg-reparado" class="aviso-listo" style="display:none;">
-                Tu equipo ya esta listo. Te esperamos en nuestro local para la entrega.
+                🎉 Tu equipo ya esta listo. Te esperamos en nuestro local con tu boleta para la entrega.
             </p>
         </div>
 
@@ -128,7 +96,15 @@
             No se encontro el equipo. Por favor, verifica el codigo QR.
         </p>
 
-        <p class="footer">Sistema de consulta automatica</p>
+        <form id="form-buscar-orden" class="status-search-box" aria-label="Consultar otra orden">
+            <label for="input-codigo-orden" class="status-search-label">Consultar por codigo de seguimiento:</label>
+            <div class="status-search-row">
+                <input type="text" id="input-codigo-orden" placeholder="Pega el codigo del ticket..." maxlength="64" autocomplete="off">
+                <button type="submit" class="btn-icon btn-exportar">Consultar</button>
+            </div>
+        </form>
+
+        <p class="footer">Sistema de consulta automatica en tiempo real · TechFix Pro</p>
     </main>
 
     <!-- Dependencias locales: el seguimiento tambien debe abrir sin conexion -->
