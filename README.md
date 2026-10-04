@@ -60,7 +60,7 @@ npm run qr           # regenera app/ticket-qr.png (usa el dominio de producción
 npm run assets       # vendor + qr, tras actualizar dependencias o el dominio
 ```
 
-`npm run check` es la verificación completa: lint, auditoría estática y 67 tests.
+`npm run check` es la verificación completa: lint, auditoría estática y 75 tests.
 La auditoría falla si reaparece alguno de los problemas documentados en
 `ANALISIS.md` (consultas sin filtro por `uid`, clases CSS huérfanas, service
 worker sin `skipWaiting`, archivos no UTF-8, dependencias por CDN, CSP con

@@ -2,15 +2,29 @@
  * Pagina publica de seguimiento (la que abre el QR del ticket).
  *
  * IMPORTANTE: lee la coleccion 'seguimiento', un espejo publico que solo
- * contiene uid, estado, modelo y actualizado. La version anterior leia
- * 'equipos', de modo que cualquiera con el ID del ticket podia descargar el
- * documento completo: nombre, telefono, IMEI, PIN del equipo, foto y firma.
+ * contiene uid, estado, modelo y actualizado. Nunca lee las colecciones
+ * privadas del taller, de modo que ningun dato personal (nombre, telefono,
+ * IMEI, PIN, foto o firma) queda expuesto.
  *
  * Esta pagina NO se autentica y no debe contener nunca datos personales.
  * ========================================================================== */
 
 (function () {
     'use strict';
+
+    const btnTheme = document.getElementById('btn-status-theme');
+    if (btnTheme) {
+        btnTheme.addEventListener('click', () => {
+            const actual = document.documentElement.getAttribute('data-theme');
+            const nuevo = actual === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', nuevo);
+            try {
+                localStorage.setItem('theme', nuevo);
+            } catch (_e) {
+                /* modo privado */
+            }
+        });
+    }
 
     if (typeof firebase === 'undefined') {
         // Sin SDK (red bloqueada, primer arranque sin conexion): se avisa en vez
@@ -39,10 +53,32 @@
     const errorDiv = document.getElementById('error');
     const lblModelo = document.getElementById('lbl-modelo');
     const lblId = document.getElementById('lbl-id');
+    const lblActualizado = document.getElementById('lbl-actualizado');
+    const badgeEstadoActual = document.getElementById('badge-estado-actual');
+    const progresoBarra = document.getElementById('progreso-barra');
+    const progresoPorcentaje = document.getElementById('progreso-porcentaje');
     const msgEstado = document.getElementById('msg-estado');
     const msgReparado = document.getElementById('msg-reparado');
+    const formBuscar = document.getElementById('form-buscar-orden');
+    const inputCodigo = document.getElementById('input-codigo-orden');
 
     const PASOS = ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado'];
+
+    const ETIQUETAS = {
+        ingresado: 'Ingresado',
+        revision: 'En Revision',
+        repuesto: 'Esperando Repuesto',
+        reparado: 'Listo para Retirar',
+        entregado: 'Entregado'
+    };
+
+    const PORCENTAJES = {
+        ingresado: 20,
+        revision: 45,
+        repuesto: 65,
+        reparado: 90,
+        entregado: 100
+    };
 
     // Mensaje en lenguaje claro para cada estado (lo primero que busca el cliente).
     const MENSAJES = {
@@ -53,7 +89,14 @@
         entregado: 'El equipo ya fue entregado. Gracias por preferirnos.'
     };
 
-    const ticketId = new URLSearchParams(window.location.search).get('id');
+    let cancelarSuscripcion = null;
+
+    function formatearActualizado(ts) {
+        if (!ts || !Number.isFinite(Number(ts))) return 'Sincronizado en tiempo real';
+        const f = new Date(Number(ts));
+        if (Number.isNaN(f.getTime())) return 'Sincronizado en tiempo real';
+        return 'Actualizado: ' + f.toLocaleDateString('es-CL');
+    }
 
     function mostrarError(mensaje) {
         loader.style.display = 'none';
@@ -62,13 +105,25 @@
         errorDiv.style.display = 'block';
     }
 
-    function mostrarEstado(estadoActual, modelo, id) {
+    function mostrarEstado(estadoActual, modelo, id, actualizado) {
         loader.style.display = 'none';
         content.style.display = 'block';
         errorDiv.style.display = 'none';
 
+        const estValido = PASOS.includes(estadoActual) ? estadoActual : 'ingresado';
         lblModelo.textContent = modelo || 'Equipo en taller';
         lblId.textContent = '#' + String(id).slice(-6).toUpperCase();
+        if (lblActualizado) lblActualizado.textContent = formatearActualizado(actualizado);
+
+        if (badgeEstadoActual) {
+            badgeEstadoActual.textContent = ETIQUETAS[estValido] || 'En taller';
+            badgeEstadoActual.className = 'badge-estado estado-' + estValido;
+        }
+
+        const pct = PORCENTAJES[estValido] || 20;
+        if (progresoPorcentaje) progresoPorcentaje.textContent = pct + '%';
+        if (progresoBarra) progresoBarra.style.width = pct + '%';
+
         if (msgEstado) msgEstado.textContent = MENSAJES[estadoActual] || 'Estamos trabajando en tu equipo.';
 
         // Cascada: se encienden todos los pasos hasta el actual.
@@ -79,6 +134,7 @@
             // 'repuesto' es opcional: solo se marca si el equipo paso realmente por ahi.
             const alcanzado = indice >= 0 && i <= indice && !(paso === 'repuesto' && indice > PASOS.indexOf('repuesto'));
             nodo.classList.toggle('active', alcanzado);
+            nodo.classList.toggle('current', estadoActual === paso);
             nodo.setAttribute('aria-current', estadoActual === paso ? 'step' : 'false');
         });
 
@@ -86,11 +142,24 @@
         msgReparado.style.display = estadoActual === 'reparado' ? 'block' : 'none';
     }
 
-    if (!ticketId) {
-        mostrarError('Falta el codigo del equipo. Vuelve a escanear el QR de tu ticket.');
-    } else {
-        db.collection('seguimiento')
-            .doc(ticketId)
+    function consultarOrden(codigoRaw) {
+        const limpio = String(codigoRaw || '').trim();
+        if (cancelarSuscripcion) {
+            cancelarSuscripcion();
+            cancelarSuscripcion = null;
+        }
+        if (!limpio) {
+            mostrarError('Falta el codigo del equipo. Vuelve a escanear el QR de tu ticket.');
+            return;
+        }
+
+        loader.style.display = 'block';
+        errorDiv.style.display = 'none';
+        if (inputCodigo && !inputCodigo.value) inputCodigo.value = limpio;
+
+        cancelarSuscripcion = db
+            .collection('seguimiento')
+            .doc(limpio)
             .onSnapshot(
                 (doc) => {
                     if (!doc.exists) {
@@ -98,7 +167,7 @@
                         return;
                     }
                     const data = doc.data() || {};
-                    mostrarEstado(data.estado, data.modelo, ticketId);
+                    mostrarEstado(data.estado, data.modelo, limpio, data.actualizado);
                 },
                 (error) => {
                     console.error('Error al leer el seguimiento:', error);
@@ -110,4 +179,15 @@
                 }
             );
     }
+
+    if (formBuscar) {
+        formBuscar.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const valor = inputCodigo ? inputCodigo.value.trim() : '';
+            consultarOrden(valor);
+        });
+    }
+
+    const ticketId = new URLSearchParams(window.location.search).get('id');
+    consultarOrden(ticketId);
 })();

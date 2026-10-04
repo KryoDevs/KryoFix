@@ -77,4 +77,24 @@ describe('Pagina publica de seguimiento', () => {
         assert.equal(document.getElementById('error').style.display, 'block');
         assert.equal(document.getElementById('content').style.display, 'none');
     });
+
+    test('permite consultar manualmente una orden desde el buscador cuando se entra sin id', async () => {
+        const { document } = montarStatus({
+            id: '',
+            semilla: { seguimiento: { orden99: { estado: 'reparado', modelo: 'Xiaomi 13T', actualizado: 1700000000000 } } }
+        });
+        await tick(10);
+        assert.equal(document.getElementById('error').style.display, 'block');
+
+        const input = document.getElementById('input-codigo-orden');
+        const form = document.getElementById('form-buscar-orden');
+        input.value = 'orden99';
+        form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+        await tick(10);
+
+        assert.equal(document.getElementById('content').style.display, 'block');
+        assert.equal(document.getElementById('lbl-modelo').textContent, 'Xiaomi 13T');
+        assert.equal(document.getElementById('progreso-porcentaje').textContent, '90%');
+        assert.equal(document.getElementById('msg-reparado').style.display, 'block');
+    });
 });

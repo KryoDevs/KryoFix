@@ -3,67 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TechFix - Verificacion visual de componentes</title>
+    <title>TechFix Pro — Banco de Pruebas Visual y Showcase</title>
     <!--
         Banco de pruebas visual. NO se despliega (firebase.json solo publica app/).
         Sirve para comprobar a ojo que las clases que genera app.js tienen estilo
         en estilos.css, sin necesidad de credenciales de Firebase.
         Uso:  npm run serve:dev   ->  http://localhost:8081/dev/preview.html
     -->
+    <script src="../app/tema.js"></script>
     <link rel="stylesheet" href="../app/estilos.css">
     <style>
         .barra-dev {
-            position: sticky; top: 0; z-index: 10;
-            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-            padding: 12px 20px; background: var(--bg-card);
+            position: sticky; top: 0; z-index: 50;
+            display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+            padding: 12px 24px; background: var(--bg-card);
             border-bottom: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
         }
-        .barra-dev h1 { font-size: 16px; margin: 0; }
+        .barra-dev h1 { font-size: 15px; margin: 0; font-weight: 700; }
         .nota-dev { font-size: 12px; color: var(--text-muted); }
+        .barra-dev-controles { display: flex; gap: 8px; align-items: center; }
     </style>
 </head>
 <body>
     <div class="barra-dev">
-        <h1>Verificacion visual de componentes</h1>
-        <button type="button" class="btn-icon" id="toggle-tema">Alternar tema</button>
-        <span class="nota-dev">Datos ficticios. Si algo se ve sin estilo, falta una clase en estilos.css.</span>
+        <div>
+            <h1>🔧 TechFix Tracker Pro — Showcase Visual de Componentes (Enterprise UI)</h1>
+            <span class="nota-dev">Datos de demostracion interactivos · Sin necesidad de credenciales de Firebase.</span>
+        </div>
+        <div class="barra-dev-controles">
+            <a href="../app/index.html" class="btn-icon">Ir a App Login</a>
+            <a href="../app/status.html?id=TF-DEMO-001" class="btn-icon">Ver Portal Cliente</a>
+            <button type="button" class="btn-icon btn-exportar" id="toggle-tema">🌓 Alternar tema</button>
+        </div>
     </div>
 
     <div class="container">
-        <div class="dashboard">
-            <div class="stat-card"><h3>Equipos Activos</h3><p class="stat-valor">7</p></div>
-            <div class="stat-card"><h3>Reparados (Mes)</h3><p class="stat-valor">12</p></div>
-            <div class="stat-card stat-money"><h3>Ingresos del Mes</h3><p class="stat-valor">$1.240.000</p></div>
-        </div>
+        <header class="topbar">
+            <div class="logo-area">
+                <img src="../app/logo.jpg" alt="" class="brand-logo-topbar" width="44" height="44">
+                <div class="brand-titles">
+                    <h1>TechFix Tracker <span class="brand-pro-tag">PRO</span></h1>
+                    <p class="brand-subtitle">Control operativo y trazabilidad de laboratorio</p>
+                </div>
+            </div>
+            <nav class="user-actions" aria-label="Acciones de demostracion">
+                <span class="badge-estado estado-reparado">📶 Online</span>
+                <span class="user-email">laboratorio@techfix.cl</span>
+                <div class="nav-segment">
+                    <button type="button" class="btn-icon activo">🏠 Taller</button>
+                    <button type="button" class="btn-icon">📚 Catalogo</button>
+                </div>
+            </nav>
+        </header>
 
         <div id="aviso-demo" hidden></div>
 
+        <div class="dashboard">
+            <div class="stat-card">
+                <div class="stat-header"><h3>Equipos Activos</h3><span class="stat-icon">🔧</span></div>
+                <p class="stat-valor">7</p>
+                <span class="stat-meta">En proceso en laboratorio</span>
+            </div>
+            <div class="stat-card stat-ready">
+                <div class="stat-header"><h3>Listos para Retiro</h3><span class="stat-icon">✅</span></div>
+                <p class="stat-valor">2</p>
+                <span class="stat-meta">Pendientes de entrega</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header"><h3>Reparados (Mes)</h3><span class="stat-icon">📈</span></div>
+                <p class="stat-valor">18</p>
+                <span class="stat-meta">Cerrados en el mes actual</span>
+            </div>
+            <div class="stat-card stat-money">
+                <div class="stat-header"><h3>Ingresos del Mes</h3><span class="stat-icon">💰</span></div>
+                <p class="stat-valor">$1.240.000</p>
+                <span class="stat-meta">Facturacion de ordenes del mes</span>
+            </div>
+            <div class="stat-card stat-pending">
+                <div class="stat-header"><h3>Saldo por Cobrar</h3><span class="stat-icon">⏳</span></div>
+                <p class="stat-valor">$118.000</p>
+                <span class="stat-meta">Restante en ordenes activas</span>
+            </div>
+        </div>
+
         <div class="panel-registros">
             <div class="header-registros">
-                <h2>📋 Equipos en Taller</h2>
+                <div class="titulo-registros-fila">
+                    <h2>📋 Equipos en Taller</h2>
+                    <span class="contador-pill">5 ordenes</span>
+                </div>
                 <div class="controles-busqueda">
-                    <button type="button" class="btn-icon btn-exportar">📤 Exportar CSV</button>
-                    <input type="search" placeholder="🔍 Buscar cliente, equipo, falla, IMEI...">
+                    <input type="search" placeholder="🔍 Buscar por cliente, orden, modelo, falla o IMEI...">
                     <select><option>Solo activos en taller</option></select>
+                    <select><option>Mas recientes primero</option></select>
+                    <button type="button" class="btn-icon btn-exportar">📤 Exportar CSV</button>
                 </div>
             </div>
             <div class="grid-proyectos" id="demo"></div>
         </div>
 
         <div class="panel-ingreso">
-            <h2>Estados vacios y validacion</h2>
-            <p class="sin-resultados">No hay equipos registrados.</p>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="demo-invalido">Campo con valor invalido</label>
-                    <input type="text" id="demo-invalido" class="campo-invalido" value="569... (telefono corto)">
-                </div>
-                <div class="form-group">
-                    <label for="demo-normal">Campo normal</label>
-                    <input type="text" id="demo-normal" value="56912345678">
+            <div class="panel-cabecera-colapsable">
+                <div>
+                    <h2>Estados vacios y validacion de formularios</h2>
+                    <p class="texto-ayuda">Muestra visual de estados de error e inputs del sistema de diseno.</p>
                 </div>
             </div>
-            <button type="button" class="enlace-login">Olvide mi contrasena</button>
+            <div class="cuerpo-colapsable">
+                <p class="sin-resultados" style="margin-bottom: 18px;">No hay equipos registrados con este filtro.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="demo-invalido">Campo con valor invalido</label>
+                        <input type="text" id="demo-invalido" class="campo-invalido" value="569... (telefono incompleto)">
+                        <small>Ingresa el numero con codigo de pais (minimo 8 digitos).</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="demo-normal">Campo validado</label>
+                        <input type="text" id="demo-normal" value="56912345678">
+                        <small>Formato valido para notificaciones por WhatsApp.</small>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
