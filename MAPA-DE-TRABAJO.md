@@ -375,5 +375,5 @@ están en [VALIDACION.md](VALIDACION.md) y la activación en [DESPLIEGUE.md](DES
 
 No declarar puesta en marcha completa: faltan configuración/staging, proveedor,
 pruebas en hardware físico y tratamiento de avisos de herramientas. La matriz de
-navegadores pasó 75 ejecuciones; no se sustituye una prueba real de cámara, teclado,
+navegadores pasó 75 ejecuciones y 30 repeticiones adicionales de WebKit; no se sustituye una prueba real de cámara, teclado,
 impresión o restauración de respaldos por una pantalla emulada.

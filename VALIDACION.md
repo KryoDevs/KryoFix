@@ -8,21 +8,25 @@ main, despliegue, migración productiva ni mensajes enviados a clientes.
 | Capa | Resultado |
 |---|---|
 | ESLint + auditoría estática | Correctos |
-| Pruebas de código, UI y motor de backend | **160 aprobadas localmente** |
-| Matriz Node 20.19 / 22 | Verificación final pendiente después de las regresiones de PWA/sesión |
+| Pruebas de código, UI y motor de backend | **160 aprobadas** |
+| Matriz Node 20.19 / 22 | **160 aprobadas en Node 20.19 y Node 22** |
 | Firestore Emulator | **10 escenarios aprobados en CI** |
 | API + Auth + Functions + Storage emulados | **4 escenarios end-to-end aprobados en CI** |
-| Chromium + WebKit | **75 ejecuciones aprobadas en CI**: 15 casos × 5 perfiles |
+| Chromium + WebKit | **75 aprobadas + 30 repeticiones WebKit aprobadas** |
 | Audit del backend desplegable | **0 avisos conocidos** |
 | Audit de herramientas raíz | **9 avisos: 7 altos, 2 moderados; 0 críticos** |
 | Proyecto de staging, proveedor real y dispositivos físicos | **Pendientes de configuración/validación externa** |
 
-CI completo del segundo ciclo: [37483586254](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37483586254).
-Ese ciclo incluye API, Storage y los cinco perfiles de navegador. Los ciclos siguientes detectaron un fallo intermitente de arranque en WebKit: una
-notificación modal de actualización interceptaba los controles. Se reemplazó por un
-banner no modal, sin activación forzada del worker, y se añadieron regresiones.
-Se exige de nuevo toda la suite, más dos repeticiones de WebKit (30 ejecuciones).
-La matriz Chromium se repitió localmente: **120 ejecuciones aprobadas**.
+CI completo del ciclo corregido: [37487712261](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37487712261).
+Incluye API/Auth/Storage, matriz de cinco perfiles y dos repeticiones adicionales
+de WebKit: **105 ejecuciones de navegador aprobadas** en total.
+
+Antes de ese resultado hubo ciclos fallidos: la aprobación anterior de la matriz
+no bastó para descartar una carrera de arranque de WebKit. Se localizó el aviso
+modal de actualización que interceptaba los controles, se corrigió el ciclo de
+vida del worker y se volvió a ejecutar todo, sin ocultar fallos mediante retries.
+La matriz Chromium también se repitió localmente: **120 ejecuciones aprobadas**.
+Se revisaron visualmente capturas de teléfono y tablet con datos ficticios.
 
 ## Pendientes funcionales implementados en esta continuación
 
@@ -50,6 +54,7 @@ La matriz Chromium se repitió localmente: **120 ejecuciones aprobadas**.
 - Retención explícita, job con cursor, exclusión durante borrado y auditoría. No se
   borran archivos por defecto ni se realizó migración masiva.
 - Informe transaccional del servidor, zona Santiago, límite declarado de volumen.
+  La consulta proyecta solo los campos necesarios: no carga fotos/firmas para sumar.
 
 ### Mensajería
 

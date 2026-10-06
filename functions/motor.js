@@ -231,7 +231,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
         clave(uid);
         // Query transaccional de Admin: corte consistente, no suma de páginas de momentos distintos.
         return db.runTransaction(async tx => {
-            const [ordenes, pagos] = await Promise.all([tx.get(db.collection('equipos').where('uid', '==', uid).limit(5001)), tx.get(db.collection('usuarios/' + uid + '/pagos').limit(10001))]);
+            const [ordenes, pagos] = await Promise.all([tx.get(db.collection('equipos').where('uid', '==', uid).select('estado', 'costo', 'abono', 'garantia').limit(5001)), tx.get(db.collection('usuarios/' + uid + '/pagos').select('monto', 'confirmado').limit(10001))]);
             if (ordenes.size > 5000 || pagos.size > 10000) fallo(413, 'El informe excede el límite del corte atómico. Requiere agregación incremental antes de ampliar este taller.');
             const resultado = resumen(ordenes.docs.map(d => d.data()), pagos.docs.map(d => d.data()), ahora());
             tx.set(privado(uid, 'metricas', 'taller'), { ...resultado, confirmado: stamp() }); return resultado;

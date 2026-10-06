@@ -162,7 +162,8 @@ confirmación de compatibilidad del backend.
 - [ ] Revisar los nueve avisos restantes de herramientas de desarrollo. El backend
       tiene cero avisos conocidos en el audit ejecutado, no una garantía absoluta.
 
-Las métricas de servidor usan un corte transaccional consistente y la zona
+Las métricas de servidor proyectan solo campos financieros/de estado, sin cargar
+fotos/firmas, y usan un corte transaccional consistente y la zona
 `America/Santiago`. Límite explícito: 5000 órdenes / 10000 pagos por cuenta. Si se
 supera, se rechaza el informe en vez de presentar cifras parciales como completas;
 se necesita una estrategia incremental para ese volumen.
