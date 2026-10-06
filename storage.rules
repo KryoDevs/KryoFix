@@ -1,0 +1,8 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Solo el backend Admin accede a los objetos, tras verificar ID token y dueño.
+    // No hay download URLs ni tokens permanentes en documentos del cliente.
+    match /{archivo=**} { allow read, write: if false; }
+  }
+}

@@ -96,7 +96,7 @@
                 }
                 if (resultado.pago) tx.set(privada(uid, 'pagos').doc(opId), { ...resultado.pago, ordenId: id, uid, confirmado: timestampServidor() });
                 if (pagoOriginalRef) tx.update(pagoOriginalRef, { revertidoPor: opId });
-                if (repuestoRef) tx.update(repuestoRef, { ...repuestoParche, ultimaOperacion: opId, actualizado: timestampServidor() });
+                if (repuestoRef) tx.update(repuestoRef, { ...repuestoParche, origenOperacion: 'orden', ultimaOperacion: opId, actualizado: timestampServidor() });
                 tx.update(ref, parche);
                 const eventoNuevo = { ordenId: id, uid, accion, huella: hash, resumen: resultado.resumen,
                     en: ahora, confirmado: timestampServidor(), revision: revision + 1 };
@@ -148,6 +148,94 @@
                 tx.set(ref, r);
             });
         }
+        async function guardarCompra(uid, datos, opId) {
+            sesion(uid);
+            const compra = { nombre: D().texto(datos.nombre, 120), marca: D().texto(datos.marca, 60), modelo: D().texto(datos.modelo, 80),
+                variante: D().texto(datos.variante, 100), proveedor: D().texto(datos.proveedor, 120), costo: D().dinero(datos.costo),
+                cantidad: D().cantidad(datos.cantidad), estado: 'pendiente', revision: 0 };
+            if (!compra.nombre || !compra.marca || !compra.modelo || !compra.proveedor) throw error('datos-invalidos', 'Completa repuesto, marca, modelo y proveedor.');
+            const hash = await huella(compra);
+            const ref = privada(uid, 'compras').doc(opId);
+            await db.runTransaction(async tx => {
+                sesion(uid); const anterior = await tx.get(ref); sesion(uid);
+                if (anterior.exists) {
+                    if (anterior.data().huella !== hash) throw error('id-reutilizado', 'El identificador corresponde a otra compra.');
+                    return;
+                }
+                tx.set(ref, { ...compra, huella: hash, creado: timestampServidor() });
+            });
+        }
+        async function resolverCompra(uid, id, accion) {
+            sesion(uid);
+            if (!['recibir', 'cancelar'].includes(accion)) throw error('datos-invalidos', 'Acción de compra inválida.');
+            const ref = privada(uid, 'compras').doc(id);
+            const lote = privada(uid, 'repuestos').doc('compra-' + id);
+            await db.runTransaction(async tx => {
+                sesion(uid); const [snap, stock] = await Promise.all([tx.get(ref), tx.get(lote)]); sesion(uid);
+                if (!snap.exists) throw error('not-found', 'Compra no encontrada.');
+                const c = snap.data(), estado = accion === 'recibir' ? 'recibida' : 'cancelada';
+                if (c.estado === estado) return;
+                if (c.estado !== 'pendiente' || stock.exists) throw error('conflicto', 'La compra ya fue resuelta. Recarga antes de continuar.');
+                if (accion === 'recibir') tx.set(lote, { nombre: c.nombre, marca: c.marca, modelo: c.modelo, variante: c.variante,
+                    proveedor: c.proveedor, costo: c.costo, disponible: c.cantidad, reservado: 0, compraId: id, creado: timestampServidor() });
+                tx.update(ref, { estado, revision: c.revision + 1, loteId: accion === 'recibir' ? lote.id : '', actualizado: timestampServidor() });
+            });
+        }
+        async function ajustarStock(uid, datos, opId) {
+            sesion(uid);
+            if (!['entrada', 'salida', 'devolucion'].includes(datos.tipo)) throw error('datos-invalidos', 'Selecciona el tipo de movimiento.');
+            const n = D().cantidad(datos.cantidad), motivo = D().texto(datos.motivo);
+            if (motivo.length < 5) throw error('datos-invalidos', 'Explica el motivo del ajuste o devolución (mínimo 5 caracteres).');
+            const delta = datos.tipo === 'entrada' ? n : -n;
+            const hash = await huella({ ...datos, cantidad: n, motivo });
+            const ref = privada(uid, 'repuestos').doc(datos.repuestoId), registro = privada(uid, 'movimientosStock').doc(opId);
+            await db.runTransaction(async tx => {
+                sesion(uid); const [lote, previo] = await Promise.all([tx.get(ref), tx.get(registro)]); sesion(uid);
+                if (previo.exists) {
+                    if (previo.data().huella !== hash) throw error('id-reutilizado', 'El identificador corresponde a otro movimiento.');
+                    return;
+                }
+                if (!lote.exists) throw error('not-found', 'Lote no encontrado.');
+                const r = lote.data();
+                if (r.disponible !== Number(datos.baseDisponible) || r.reservado !== Number(datos.baseReservado)) throw error('conflicto', 'El stock cambió. Recarga y revisa las cantidades.');
+                if (r.disponible + delta < 0 || r.disponible + delta > 10000) throw error('sin-stock', 'El disponible debe quedar entre 0 y 10.000; no se pueden retirar unidades reservadas.');
+                tx.set(registro, { repuestoId: ref.id, tipo: datos.tipo, delta, motivo, huella: hash,
+                    antes: r.disponible, despues: r.disponible + delta, confirmado: timestampServidor() });
+                tx.update(ref, { disponible: r.disponible + delta, origenOperacion: 'inventario', ultimaOperacion: opId, actualizado: timestampServidor() });
+            });
+        }
+        async function crearRetrabajo(uid, id, revision, motivo, opId) {
+            sesion(uid); motivo = D().texto(motivo);
+            if (motivo.length < 5) throw error('datos-invalidos', 'Describe el motivo de la garantía.');
+            const hash = await huella({ id, motivo });
+            const original = db.collection('equipos').doc(id), nueva = db.collection('equipos').doc(opId);
+            const contador = privada(uid, 'config').doc('numeracion'), evento = privada(uid, 'eventos').doc(opId);
+            return db.runTransaction(async tx => {
+                sesion(uid);
+                const [padre, hija, numero, ev] = await Promise.all([tx.get(original), tx.get(nueva), tx.get(contador), tx.get(evento)]); sesion(uid);
+                if (!padre.exists || padre.data().uid !== uid) throw error('permission-denied', 'Orden no disponible.');
+                if (hija.exists || ev.exists) {
+                    if (!ev.exists || ev.data().huella !== hash || !hija.exists || hija.data().origenGarantia !== id || hija.data().uid !== uid) throw error('id-reutilizado', 'El identificador corresponde a otra operación.');
+                    return { id: opId };
+                }
+                const p = padre.data();
+                if (p.estado !== 'entregado' || (p.revisionOrden || 0) !== revision) throw error('conflicto', 'Se requiere la versión actual de una orden entregada.');
+                if (p.garantia?.estado === 'abierta' && p.garantia.ordenRetrabajo) throw error('conflicto', 'Ya existe una orden de retrabajo abierta para este caso.');
+                const n = (numero.exists ? numero.data().numero : 0) + 1, ahora = Date.now();
+                const orden = { uid, schemaVersion: 2, revisionOrden: 0, numeroOrden: n, idOrden: 'KRF-' + String(n).padStart(6, '0'),
+                    origenGarantia: id, cliente: p.cliente, telefono: p.telefono || '', equipo: p.equipo || '', modelo: p.modelo || '',
+                    clienteId: p.clienteId || '', imei: p.imei || '', falla: motivo, pin: '', accesorios: '', notas: '',
+                    prioridad: 'normal', estado: 'ingresado', costo: 0, abono: 0, timestamp: ahora,
+                    procedimiento: window.TechFixDominio.crearProcedimiento(), creado: timestampServidor() };
+                const garantia = { estado: 'abierta', motivo, resultado: '', ordenRetrabajo: opId, en: ahora, por: uid };
+                tx.set(nueva, orden); tx.set(contador, { numero: n });
+                tx.set(db.collection('seguimiento').doc(opId), { uid, estado: 'ingresado', modelo: orden.modelo.slice(0, 80), actualizado: timestampServidor() });
+                tx.update(original, { garantia, revisionOrden: revision + 1, ultimaOperacion: opId, actualizado: timestampServidor() });
+                tx.set(evento, { uid, ordenId: id, accion: 'garantia', huella: hash, resumen: 'Retrabajo creado: ' + orden.idOrden,
+                    garantia, revision: revision + 1, en: ahora, confirmado: timestampServidor() });
+                return { id: opId };
+            });
+        }
         async function guardarPlantilla(uid, datos, opId) {
             sesion(uid);
             const id = datos.id || opId;
@@ -167,6 +255,21 @@
                 tx.set(ref, plantilla);
                 tx.set(db.collection('usuarios/' + uid + '/plantillas/' + id + '/versiones').doc(String(plantilla.version)), plantilla);
             });
+        }
+        async function remoto(ruta, datos = {}) {
+            const u = usuario();
+            if (!u) throw error('sesion-cambiada', 'Inicia sesión.');
+            sesion(u.uid);
+            if (!u.getIdToken) throw error('backend-no-disponible', 'Esta función requiere Auth real y el backend configurado.');
+            const token = await u.getIdToken(); sesion(u.uid);
+            const r = await window.fetch('/api/' + ruta, { method: 'POST', cache: 'no-store',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(datos) });
+            sesion(u.uid);
+            let resultado;
+            try { resultado = await r.json(); } catch (_e) { throw error('backend-no-disponible', 'El backend no está desplegado en este entorno. No se realizó la operación.'); }
+            sesion(u.uid);
+            if (!r.ok) throw error('backend', resultado.error || 'No se pudo confirmar la operación.');
+            return resultado;
         }
         async function listar(uid, coleccion, ordenId) {
             sesion(uid);
@@ -191,7 +294,7 @@
             sesion(uid);
             return { ordenes: snap.docs.map(d => ({ ...d.data(), id: d.id })), cursor: snap.docs.at(-1), fin: snap.size < limite };
         }
-        return { ejecutar, crearOrden, guardarRepuesto, guardarPlantilla, listar, leerOrden, pagina, nuevoId };
+        return { remoto, ejecutar, crearOrden, guardarCompra, resolverCompra, ajustarStock, crearRetrabajo, guardarRepuesto, guardarPlantilla, listar, leerOrden, pagina, nuevoId };
     }
     window.KryoFixTallerServicio = { crear };
 })();

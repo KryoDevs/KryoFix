@@ -27,3 +27,6 @@ Thumbs.db
 
 # Credenciales temporales de GitHub Actions
 gha-creds-*.json
+
+# Secretos de Functions y configuración exclusiva de emuladores
+.secret.local

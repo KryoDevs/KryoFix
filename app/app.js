@@ -178,6 +178,17 @@
         procedimiento: p => seccionProcedimiento(p),
         procedimientoPendiente: p => borradores.obtener(p.id, p.procedimiento).sucio, alCerrar: () => { window.history.replaceState(null, '', window.location.pathname + window.location.search); renderizarProyectos(); },
         urlSeguimiento });
+    async function migrarArchivoNuevo(id, tipo, uid, epoca) {
+        if (!currentUser?.getIdToken || currentUser.uid !== uid || epocaSesion !== epoca) return;
+        try {
+            const capacidad = await tallerServicio.remoto('capacidades');
+            if (!currentUser || currentUser.uid !== uid || epocaSesion !== epoca) return;
+            if (!capacidad.storage) throw new Error('Storage aún no configurado');
+            await tallerServicio.remoto('migrar-archivo', { id, tipo });
+        } catch (_e) {
+            if (currentUser?.uid === uid && epocaSesion === epoca) toast('warning', 'Orden guardada. Archivo conservado en Firestore; migra desde Evidencias cuando Storage esté disponible.');
+        }
+    }
     escuchar('btn-gestion', 'click', () => ficha.gestion());
     escuchar('btn-cliente-recurrente', 'click', async () => {
         if (!currentUser) return;
@@ -766,6 +777,7 @@
             );
         }
 
+        if (p.archivos) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'Archivos privados: consultar la sección Evidencias de la ficha.' }));
         const acciones = el('div', { class: 'acciones-tarjeta' });
         acciones.appendChild(el('button', { class: 'btn-icon btn-ficha', text: 'Abrir ficha de trabajo',
             attrs: { type: 'button', 'data-accion': 'ficha', 'data-id': p.id } }));
@@ -1337,6 +1349,7 @@
             // recien creado como respaldo para poder imprimir el ticket ya.
             const recienCreado = proyectos.find((x) => x.id === ref.id) || creado;
             ofrecerTicket(recienCreado);
+            if (creado.evidencia) migrarArchivoNuevo(creado.id, 'evidencia', nuevoProyecto.uid, sesionDeIngreso);
         } catch (err) {
             if (sesionDeIngreso === epocaSesion) avisarError('No se pudo guardar el equipo', err);
         } finally {
@@ -1909,7 +1922,17 @@
         isDrawing = false;
     }
 
-    if (canvas) {
+    if (canvas && window.PointerEvent) {
+        canvas.addEventListener('pointerdown', e => {
+            if (e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            startDrawing(e);
+            try { canvas.setPointerCapture(e.pointerId); } catch (_e) { /* Evento sintético o puntero ya liberado. */ }
+        });
+        canvas.addEventListener('pointermove', draw);
+        canvas.addEventListener('pointerup', stopDrawing);
+        canvas.addEventListener('pointercancel', stopDrawing);
+        canvas.addEventListener('lostpointercapture', stopDrawing);
+    } else if (canvas) {
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stopDrawing);
@@ -1919,6 +1942,12 @@
         canvas.addEventListener('touchend', stopDrawing);
         canvas.addEventListener('touchcancel', stopDrawing);
     }
+
+    const ajustarAltoVisible = () => document.documentElement.style.setProperty('--alto-visible',
+        (window.visualViewport?.height || window.innerHeight) + 'px');
+    window.visualViewport?.addEventListener('resize', ajustarAltoVisible);
+    window.addEventListener('resize', ajustarAltoVisible);
+    ajustarAltoVisible();
 
     // Trampa de foco: el tabulador no debe escapar del modal.
     const SELECTOR_ENFOCABLES = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -1977,7 +2006,8 @@
             return;
         }
         const equipoActual = proyectos.find((x) => x.id === currentFirmaId);
-        if (!equipoActual) return;
+        if (!equipoActual || !currentUser) return;
+        const uidFirma = currentUser.uid, sesionFirma = epocaSesion;
         const etiqueta = btn.textContent;
         btn.textContent = 'Guardando...';
         btn.disabled = true;
@@ -1998,13 +2028,14 @@
                     firma: dataUrl, saldar: $('chk-saldar-entrega').checked,
                     excepcion: $('excepcion-entrega').value.trim()
                 } });
+            if (currentUser?.uid !== uidFirma || epocaSesion !== sesionFirma) return;
             cerrarModalFirma();
             toast('success', 'Equipo entregado con firma');
+            migrarArchivoNuevo(idFirmado, 'firmaCliente', uidFirma, sesionFirma);
         } catch (err) {
-            avisarError('No se pudo guardar la firma', err);
+            if (currentUser?.uid === uidFirma && epocaSesion === sesionFirma) avisarError('No se pudo guardar la firma', err);
         } finally {
-            btn.textContent = etiqueta;
-            btn.disabled = false;
+            if (epocaSesion === sesionFirma) { btn.textContent = etiqueta; btn.disabled = false; }
         }
     });
 

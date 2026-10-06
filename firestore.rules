@@ -101,6 +101,22 @@ service cloud.firestore {
         );
     }
 
+    function ajusteValido(uid, repuestoId, d, r) {
+      let m = getAfter(/databases/$(database)/documents/usuarios/$(uid)/movimientosStock/$(d.ultimaOperacion)).data;
+      return m.keys().hasOnly(['repuestoId', 'tipo', 'delta', 'motivo', 'huella', 'antes', 'despues', 'confirmado'])
+        && m.confirmado == request.time && m.repuestoId == repuestoId
+        && m.huella is string && m.huella.size() == 64 && m.motivo is string && m.motivo.size() >= 5 && m.motivo.size() <= 500
+        && m.delta is int && m.delta != 0 && m.delta >= -10000 && m.delta <= 10000
+        && ((m.tipo == 'entrada' && m.delta > 0) || (m.tipo in ['salida', 'devolucion'] && m.delta < 0))
+        && m.antes == r.disponible && m.despues == d.disponible
+        && d.disponible == r.disponible + m.delta && d.disponible >= 0 && d.disponible <= 10000
+        && d.reservado == r.reservado && d.origenOperacion == 'inventario' && d.actualizado == request.time;
+    }
+    function origenGarantiaValido(id, d) {
+      let p = getAfter(/databases/$(database)/documents/equipos/$(d.origenGarantia)).data;
+      return p.uid == request.auth.uid && p.estado == 'entregado' && p.garantia.ordenRetrabajo == id
+        && d.cliente == p.cliente && d.costo == 0 && d.abono == 0 && d.pin == '';
+    }
     // -------------------------------------------------------------------------
     // Ordenes de reparacion: estrictamente privadas por tecnico.
     // -------------------------------------------------------------------------
@@ -109,6 +125,9 @@ service cloud.firestore {
       allow get: if autenticado() && !exists(/databases/$(database)/documents/equipos/$(equipoId));
       allow create: if seAutoAsigna()
                     && request.resource.data.get('reservas', []).size() == 0
+                    && request.resource.data.get('archivos', {}).size() == 0
+                    && !('aprobacionActiva' in request.resource.data)
+                    && (!('origenGarantia' in request.resource.data) || origenGarantiaValido(equipoId, request.resource.data))
                     && request.resource.data.estado in ['ingresado', 'revision']
                     && (request.resource.data.get('schemaVersion', 1) < 2 || (
                         request.resource.data.revisionOrden == 0
@@ -128,6 +147,9 @@ service cloud.firestore {
       allow update: if esDueno() && seAutoAsigna() && mantieneDueno()
                     && estadoValido() && revisionValida(equipoId)
                     && request.resource.data.get('schemaVersion', 1) == resource.data.get('schemaVersion', 1)
+                    && request.resource.data.get('origenGarantia', '') == resource.data.get('origenGarantia', '')
+                    && request.resource.data.get('archivos', {}) == resource.data.get('archivos', {})
+                    && request.resource.data.get('aprobacionActiva', '') == resource.data.get('aprobacionActiva', '')
                     && request.resource.data.get('numeroOrden', 0) == resource.data.get('numeroOrden', 0)
                     && request.resource.data.get('idOrden', '') == resource.data.get('idOrden', '')
                     && request.resource.data.cliente is string
@@ -292,14 +314,56 @@ service cloud.firestore {
         && request.resource.data.disponible <= 10000 && request.resource.data.reservado == 0
         && request.resource.data.creado == request.time;
       allow update: if autenticado() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disponible', 'reservado', 'ultimaOperacion', 'actualizado'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disponible', 'reservado', 'ultimaOperacion', 'origenOperacion', 'actualizado'])
         && request.resource.data.disponible is int && request.resource.data.reservado is int
         && request.resource.data.disponible >= 0 && request.resource.data.reservado >= 0
-        && request.resource.data.disponible + request.resource.data.reservado <= resource.data.disponible + resource.data.reservado
+        && (request.resource.data.get('origenOperacion', 'orden') == 'inventario' || request.resource.data.disponible + request.resource.data.reservado <= resource.data.disponible + resource.data.reservado)
         && request.resource.data.actualizado == request.time
-        && movimientoPermitido();
+        && (request.resource.data.get('origenOperacion', 'orden') == 'inventario'
+          ? ajusteValido(uid, repuestoId, request.resource.data, resource.data) : movimientoPermitido());
     }
 
+    match /usuarios/{uid}/movimientosStock/{movimientoId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid
+        && getAfter(/databases/$(database)/documents/usuarios/$(uid)/repuestos/$(request.resource.data.repuestoId)).data.ultimaOperacion == movimientoId
+        && ajusteValido(uid, request.resource.data.repuestoId,
+          getAfter(/databases/$(database)/documents/usuarios/$(uid)/repuestos/$(request.resource.data.repuestoId)).data,
+          get(/databases/$(database)/documents/usuarios/$(uid)/repuestos/$(request.resource.data.repuestoId)).data);
+    }
+    match /usuarios/{uid}/compras/{compraId} {
+      function compraValida() {
+        let c = request.resource.data;
+        return c.keys().hasOnly(['nombre', 'marca', 'modelo', 'variante', 'proveedor', 'costo', 'cantidad', 'estado', 'revision', 'huella', 'creado'])
+          && c.nombre is string && c.nombre.size() > 0 && c.nombre.size() <= 120
+          && c.marca is string && c.modelo is string && c.variante is string
+          && c.proveedor is string && c.proveedor.size() > 0 && c.proveedor.size() <= 120
+          && c.costo is int && c.costo >= 0 && c.costo <= 100000000
+          && c.cantidad is int && c.cantidad > 0 && c.cantidad <= 10000
+          && c.huella is string && c.huella.size() == 64
+          && c.estado == 'pendiente' && c.revision == 0 && c.creado == request.time;
+      }
+      function loteRecibido() {
+        let c = request.resource.data;
+        let r = getAfter(/databases/$(database)/documents/usuarios/$(uid)/repuestos/$(c.loteId)).data;
+        return c.loteId == 'compra-' + compraId && r.compraId == compraId && r.creado == request.time
+          && r.nombre == c.nombre && r.marca == c.marca && r.modelo == c.modelo
+          && r.variante == c.variante && r.proveedor == c.proveedor && r.costo == c.costo
+          && r.disponible == c.cantidad && r.reservado == 0;
+      }
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid && compraValida();
+      allow update: if autenticado() && request.auth.uid == uid && resource.data.estado == 'pendiente'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'revision', 'loteId', 'actualizado'])
+        && request.resource.data.revision == resource.data.revision + 1 && request.resource.data.actualizado == request.time
+        && ((request.resource.data.estado == 'cancelada' && request.resource.data.loteId == '')
+          || (request.resource.data.estado == 'recibida' && loteRecibido()));
+    }
+
+    // Escritos exclusivamente por el backend: nunca por el navegador.
+    match /usuarios/{uid}/{coleccion}/{id} {
+      allow read: if autenticado() && request.auth.uid == uid && coleccion in ['mensajes', 'consentimientos', 'metricas'];
+    }
     // -------------------------------------------------------------------------
     // Todo lo demas queda cerrado.
     // -------------------------------------------------------------------------

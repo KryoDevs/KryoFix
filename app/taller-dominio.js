@@ -166,7 +166,7 @@
                 break;
             case 'garantia':
                 if (p.estado !== 'entregado' || texto(datos.motivo).length < 5) fallo('La garantía se registra sobre una orden entregada, indicando el motivo.');
-                parche.garantia = { motivo: texto(datos.motivo), resultado: texto(datos.resultado), estado: datos.estado === 'cerrada' ? 'cerrada' : 'abierta', en: ahora, por: uid };
+                parche.garantia = { ...p.garantia, motivo: texto(datos.motivo), resultado: texto(datos.resultado), estado: datos.estado === 'cerrada' ? 'cerrada' : 'abierta', en: ahora, por: uid };
                 resumen = 'Caso de garantía ' + parche.garantia.estado;
                 break;
             case 'contacto':

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+  <title>Revisar presupuesto — KryoFix</title>
+  <link rel="stylesheet" href="estilos.css"><script src="tema.js" defer></script><script src="aprobacion.js" defer></script>
+</head>
+<body class="status-page-body">
+  <main class="status-container aprobacion-contenido">
+    <h1>KryoFix</h1><h2>Revisión de presupuesto</h2>
+    <p>Enlace privado de un solo uso. No lo compartas con terceros. La decisión acredita el uso de este enlace, no verifica tu identidad legal ni es una firma electrónica avanzada.</p>
+    <p id="aviso-aprobacion" role="status">Consultando presupuesto…</p>
+    <section id="detalle-presupuesto" aria-label="Presupuesto"></section>
+    <form id="decision-presupuesto" class="ficha-form" hidden>
+      <label class="ficha-campo" for="nombre-cliente">Tu nombre<input id="nombre-cliente" name="nombre" autocomplete="name" minlength="3" maxlength="120" required></label>
+      <label><input type="checkbox" name="leido" required> He leído el total, los conceptos y las condiciones de esta versión.</label>
+      <div class="ficha-acciones"><button class="btn-guardar" type="submit" value="aprobado">Aprobar presupuesto</button><button class="btn-cancelar" type="submit" value="rechazado">Rechazar presupuesto</button></div>
+    </form>
+    <p class="texto-ayuda">Gestión de servicio técnico · Desarrollado por KryoDevs</p>
+  </main>
+</body>
+</html>

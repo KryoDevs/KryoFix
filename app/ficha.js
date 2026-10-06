@@ -122,7 +122,7 @@
             cuerpo.replaceChildren(); navegacion.replaceChildren(); formulariosEditados.clear();
             titulo.textContent = orden ? (orden.idOrden || orden.id) + ' · ' + orden.equipo + ' ' + orden.modelo : 'Gestión del taller';
             estado.textContent = orden ? orden.cliente + ' · ' + window.TechFixDominio.ESTADO_TEXTO[orden.estado] + ' · Revisión ' + (orden.revisionOrden || 0) + ' · ' + D().siguienteAccion(orden) : 'Datos privados de tu cuenta · operaciones con conexión';
-            const secciones = orden ? ['Resumen', 'Diagnóstico', 'Procedimiento', 'Calidad', 'Presupuesto', 'Pagos', 'Repuestos', 'Garantía', 'Contacto', 'Historial'] : ['Historial', 'Clientes', 'Inventario', 'Plantillas', 'Informes'];
+            const secciones = orden ? ['Resumen', 'Diagnóstico', 'Procedimiento', 'Calidad', 'Presupuesto', 'Pagos', 'Repuestos', 'Evidencias', 'Garantía', 'Contacto', 'Historial'] : ['Historial', 'Clientes', 'Inventario', 'Compras', 'Plantillas', 'Informes'];
             for (const nombre of secciones) {
                 const b = boton(nombre, () => cambiar(nombre)); b.setAttribute('aria-current', nombre === seccion ? 'page' : 'false'); navegacion.appendChild(b);
             }
@@ -133,6 +133,7 @@
             try {
                 if (!orden) { await herramientas(t); return; }
                 if (seccion === 'Resumen') {
+                    if (orden.origenGarantia) cuerpo.appendChild(boton('Ver orden original de garantía', () => abrir(orden.origenGarantia)));
                     info('Síntoma de recepción: ' + (orden.falla || 'Sin detalle'));
                     info('Diagnóstico confirmado: ' + (orden.diagnostico?.causa || 'Pendiente; una sugerencia no confirma la causa.'));
                     info('Próxima acción: ' + D().siguienteAccion(orden));
@@ -209,7 +210,14 @@
                         campo(a, 'estado', 'Decisión recibida', { opciones: [['aprobado', 'Aprobado'], ['rechazado', 'Rechazado']] });
                         campo(a, 'medio', 'Medio', { opciones: [['presencial', 'Presencial'], ['whatsapp', 'WhatsApp'], ['telefono', 'Teléfono']] });
                         campo(a, 'evidencia', 'Referencia de la autorización: quién, fecha, conversación o documento', { multilinea: true, requerido: true }); a.finalizar();
-                        info('Registro manual por el técnico. No es una firma digital del cliente ni un enlace de aprobación pública.');
+                        info('El registro anterior es manual. El enlace protegido permite otra vía: válido 48 horas, para esta versión, de un solo uso. No verifica identidad legal ni equivale a firma electrónica avanzada.');
+                        if (p.autorizacion.estado === 'pendiente') {
+                            const enlace = formulario('Generar enlace protegido para el cliente', async () => {
+                                const r = await servicio.remoto('emitir-enlace', { id: orden.id });
+                                await window.Swal.fire({ target: dialogo, title: 'Enlace del presupuesto', text: 'Compártelo solo con el cliente. Invalida cualquier enlace anterior. Copia antes de cerrar.',
+                                    input: 'text', inputValue: window.location.origin + '/aprobacion.html#' + r.token, inputAttributes: { readonly: 'readonly' }, confirmButtonText: 'Listo' });
+                            }); enlace.finalizar();
+                        }
                     }
                 } else if (seccion === 'Pagos') {
                     info('Abono acumulado: ' + window.TechFixDominio.formatearCLP(orden.abono) + ' · Saldo: ' + window.TechFixDominio.formatearCLP(D().resumenFinanciero(orden).pendiente));
@@ -251,8 +259,37 @@
                         campo(f, 'reservaId', 'Reserva', { opciones: activas.map(r => [r.id, r.nombre + ' × ' + r.cantidad]) });
                         campo(f, 'accion', 'Movimiento', { opciones: [['consumir', 'Consumir: instalado en la reparación'], ['liberar', 'Liberar: devolver al disponible']] }); f.finalizar();
                     }
+                } else if (seccion === 'Evidencias') {
+                    info('Archivos privados: sin URL pública permanente. La migración verifica SHA-256 antes de retirar el base64 de Firestore; si falla conserva el original. Requiere backend y bucket configurados.');
+                    for (const tipo of ['evidencia', 'firmaCliente']) {
+                        const a = orden.archivos?.[tipo];
+                        if (a?.borrado) info(tipo + ': eliminado por la política de retención confirmada.');
+                        else if (a || orden[tipo]) cuerpo.appendChild(boton('Ver ' + tipo, async () => {
+                            try {
+                                const dataUrl = orden[tipo] || (await servicio.remoto('leer-archivo', { id: orden.id, tipo })).dataUrl;
+                                if (!vigente(t)) return;
+                                await window.Swal.fire({ target: dialogo, imageUrl: dataUrl, imageAlt: tipo, title: tipo });
+                            } catch (e) { if (vigente(t)) aviso.textContent = e.message; }
+                        }));
+                    }
+                    const pendientes = ['evidencia', 'firmaCliente'].filter(k => orden[k]);
+                    if (pendientes.length) {
+                        const f = formulario('Migrar archivo a Storage privado', d => servicio.remoto('migrar-archivo', { id: orden.id, tipo: d.tipo }));
+                        campo(f, 'tipo', 'Archivo a migrar', { opciones: pendientes.map(k => [k, k]) }); f.finalizar();
+                    }
+                    if (orden.archivos) {
+                        info('Por defecto se conservan indefinidamente. Confirma una política solo tras revisar tus obligaciones legales y respaldos. El borrado programado es irreversible y se registra en el historial.');
+                        const f = formulario('Confirmar política de retención', d => servicio.remoto('retencion', { id: orden.id, dias: Number(d.dias), confirmar: d.confirmar === 'si' }));
+                        campo(f, 'dias', 'Días de conservación desde hoy (90 a 3650)', { tipo: 'number', min: 90, valor: 365, requerido: true });
+                        campo(f, 'confirmar', 'Autorización de borrado al vencer', { opciones: [['no', 'No autorizo'], ['si', 'Confirmo la política y el borrado al vencer']] }); f.finalizar();
+                    }
                 } else if (seccion === 'Garantía') {
-                    info('El caso queda asociado a esta orden original. No reabre ni altera la entrega ni sus pagos.');
+                    info('El retrabajo tiene su propia orden y numeración. No reabre ni altera la entrega, firma o pagos originales.');
+                    if (orden.garantia?.ordenRetrabajo) cuerpo.appendChild(boton('Abrir orden de retrabajo', () => abrir(orden.garantia.ordenRetrabajo)));
+                    if (orden.estado === 'entregado' && !(orden.garantia?.estado === 'abierta' && orden.garantia.ordenRetrabajo)) {
+                        const nueva = formulario('Crear orden de retrabajo', (d, op) => servicio.crearRetrabajo(usuario().uid, orden.id, orden.revisionOrden || 0, d.motivo, op));
+                        campo(nueva, 'motivo', 'Motivo del nuevo retrabajo', { multilinea: true, requerido: true }); nueva.finalizar();
+                    }
                     const f = formulario('Registrar seguimiento de garantía', (d, op) => ejecutar('garantia', d, op));
                     campo(f, 'motivo', 'Motivo reportado', { valor: orden.garantia?.motivo, multilinea: true, requerido: true });
                     campo(f, 'resultado', 'Evaluación / solución aplicada', { valor: orden.garantia?.resultado, multilinea: true });
@@ -270,6 +307,14 @@
                     const f = formulario('Registrar contacto realizado', (d, op) => ejecutar('contacto', d, op));
                     campo(f, 'tipo', 'Motivo de contacto', { opciones: [['presupuesto', 'Presupuesto'], ['repuesto', 'Repuesto'], ['retiro', 'Retiro'], ['garantia', 'Garantía']] });
                     campo(f, 'resultado', 'Resultado / respuesta', { multilinea: true, requerido: true }); f.finalizar();
+                    info('Mensajería automática: requiere proveedor configurado, consentimiento vigente y activación del taller. En cola o aceptado no significa entregado.');
+                    const consentimiento = formulario('Guardar consentimiento o revocación', d => servicio.remoto('consentimiento', { id: orden.id, aceptado: d.aceptado === 'si', evidencia: d.evidencia }));
+                    campo(consentimiento, 'aceptado', 'Permiso para mensajes de servicio a este teléfono', { opciones: [['no', 'Sin consentimiento / revocado'], ['si', 'Cliente autoriza mensajes de servicio']] });
+                    campo(consentimiento, 'evidencia', 'Referencia verificable del consentimiento o revocación', { multilinea: true, requerido: true }); consentimiento.finalizar();
+                    const cola = formulario('Programar mensaje de servicio', (d, opId) => servicio.remoto('encolar', { id: orden.id, tipo: d.tipo, opId }));
+                    campo(cola, 'tipo', 'Mensaje que se enviará si el estado sigue vigente', { opciones: [['retiro', 'Listo para retiro'], ['repuesto', 'Pendiente de repuesto'], ['presupuesto', 'Presupuesto pendiente'], ['garantia', 'Seguimiento de garantía']] }); cola.finalizar();
+                    const mensajes = await servicio.listar(usuario().uid, 'mensajes', orden.id); if (!vigente(t)) return;
+                    for (const m of mensajes) info('Mensaje ' + m.tipo + ': ' + m.estado);
                     if (orden.ultimoContacto) info('Último contacto registrado: ' + new Date(orden.ultimoContacto.en).toLocaleString('es-CL'));
                 } else if (seccion === 'Historial') {
                     const eventos = await servicio.listar(usuario().uid, 'eventos', orden.id); if (!vigente(t)) return;
@@ -308,6 +353,32 @@
                 campo(f, 'costo', 'Costo unitario CLP', { tipo: 'number', valor: 0, requerido: true }); f.finalizar();
                 const stock = await servicio.listar(uid, 'repuestos'); if (!vigente(t)) return;
                 for (const r of stock) info(r.nombre + ' · ' + r.marca + ' ' + r.modelo + ' · ' + r.variante + ' · disponible ' + r.disponible + ' / reservado ' + r.reservado);
+                if (stock.length) {
+                    const ajuste = formulario('Confirmar movimiento de inventario', (d, op) => {
+                        const r = stock.find(r => r.id === d.repuestoId);
+                        return servicio.ajustarStock(uid, { ...d, baseDisponible: r.disponible, baseReservado: r.reservado }, op);
+                    });
+                    campo(ajuste, 'repuestoId', 'Lote a ajustar', { opciones: stock.map(r => [r.id, r.nombre + ' · ' + r.proveedor + ' · ' + r.disponible + ' disponibles']) });
+                    campo(ajuste, 'tipo', 'Tipo de movimiento', { opciones: [['salida', 'Ajuste de salida / merma'], ['entrada', 'Ajuste de entrada'], ['devolucion', 'Devolución al proveedor']] });
+                    campo(ajuste, 'cantidad', 'Unidades del movimiento', { tipo: 'number', min: 1, requerido: true });
+                    campo(ajuste, 'motivo', 'Motivo y comprobante', { multilinea: true, requerido: true }); ajuste.finalizar();
+                }
+                const movimientos = await servicio.listar(uid, 'movimientosStock'); if (!vigente(t)) return;
+                for (const m of movimientos) info(D().fechaRegistro(m).toLocaleString('es-CL') + ' · ' + m.tipo + ' ' + m.delta + ' · ' + m.motivo);
+            } else if (seccion === 'Compras') {
+                info('Las compras pendientes no aumentan el stock. Confirmar recepción crea un solo lote; cancelar no modifica inventario.');
+                const f = formulario('Registrar compra pendiente', (d, op) => servicio.guardarCompra(uid, d, op));
+                for (const [k, label] of [['nombre', 'Repuesto'], ['marca', 'Marca'], ['modelo', 'Modelo exacto'], ['variante', 'Variante'], ['proveedor', 'Proveedor']]) campo(f, k, label, { requerido: k !== 'variante', max: 120 });
+                campo(f, 'cantidad', 'Unidades solicitadas', { tipo: 'number', min: 1, requerido: true });
+                campo(f, 'costo', 'Costo unitario CLP', { tipo: 'number', valor: 0, requerido: true }); f.finalizar();
+                const compras = await servicio.listar(uid, 'compras'); if (!vigente(t)) return;
+                for (const c of compras) info(c.nombre + ' × ' + c.cantidad + ' · ' + c.proveedor + ' · ' + c.estado);
+                const pendientes = compras.filter(c => c.estado === 'pendiente');
+                if (pendientes.length) {
+                    const resolver = formulario('Confirmar resolución de compra', d => servicio.resolverCompra(uid, d.id, d.accion));
+                    campo(resolver, 'id', 'Compra pendiente', { opciones: pendientes.map(c => [c.id, c.nombre + ' × ' + c.cantidad + ' · ' + c.proveedor]) });
+                    campo(resolver, 'accion', 'Resolución', { opciones: [['recibir', 'Confirmo recepción completa'], ['cancelar', 'Cancelar sin recibir']] }); resolver.finalizar();
+                }
             } else if (seccion === 'Plantillas') {
                 info('Guías privadas del taller, para personal capacitado. Cada edición conserva una versión; las órdenes mantienen su copia. Verifica fuente y seguridad antes de aplicar.');
                 const plantillas = await servicio.listar(uid, 'plantillas'); if (!vigente(t)) return;
@@ -344,6 +415,11 @@
             } else if (seccion === 'Informes') {
                 info('Lectura paginada de todas las órdenes de tu cuenta. Puede generar lecturas facturables. Es un informe operativo, no un corte contable atómico.');
                 const resultado = nodo('div');
+                const remoto = formulario('Calcular informe consistente en el servidor', async () => {
+                    const r = await servicio.remoto('metricas');
+                    if (!vigente(t)) return;
+                    await window.Swal.fire({ target: dialogo, title: 'Corte del servidor · ' + r.periodo, text: r.ordenes + ' órdenes · ' + r.activas + ' activas · saldo ' + window.TechFixDominio.formatearCLP(r.saldo) + ' · pagos netos del mes ' + window.TechFixDominio.formatearCLP(r.netoMes) + ' · zona America/Santiago.' });
+                }); remoto.finalizar();
                 const calcular = boton('Consultar todas las órdenes y calcular', async () => {
                     if (ocupado) return;
                     ocupado = true; calcular.disabled = true;

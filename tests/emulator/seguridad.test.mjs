@@ -135,3 +135,30 @@ test('reglas exigen lote y deltas exactos; servicio reserva, consume y libera', 
     assert.equal(stock.reservado, 0);
     await assertFails(db('ana').doc('usuarios/ana/repuestos/lote').update({ disponible: 0, reservado: 1, ultimaOperacion: 'reserva-2', actualizado: serverTime() }));
 });
+
+test('compra, recepción, ajustes y devolución atómicos con diario inmutable', async () => {
+    const s = servicio('ana');
+    await s.guardarCompra('ana', { nombre: 'Pantalla', marca: 'Apple', modelo: 'iPhone 13', proveedor: 'Proveedor', costo: 10000, cantidad: 3 }, 'compra');
+    assert.equal((await s.listar('ana', 'repuestos')).length, 0);
+    await assertFails(db('ana').doc('usuarios/ana/compras/compra').update({ estado: 'recibida', revision: 1, loteId: 'falso', actualizado: serverTime() }));
+    await s.resolverCompra('ana', 'compra', 'recibir'); await s.resolverCompra('ana', 'compra', 'recibir');
+    const datos = { repuestoId: 'compra-compra', tipo: 'devolucion', cantidad: 2, motivo: 'Defecto al recibir', baseDisponible: 3, baseReservado: 0 };
+    await s.ajustarStock('ana', datos, 'devolucion'); await s.ajustarStock('ana', datos, 'devolucion');
+    await s.ajustarStock('ana', { ...datos, tipo: 'entrada', cantidad: 1, baseDisponible: 1 }, 'entrada');
+    assert.equal((await s.listar('ana', 'repuestos'))[0].disponible, 2);
+    await assertFails(db('ana').doc('usuarios/ana/movimientosStock/devolucion').delete());
+    await assertFails(db('ana').doc('usuarios/ana/repuestos/compra-compra').update({ disponible: 90, origenOperacion: 'inventario', ultimaOperacion: 'entrada', actualizado: serverTime() }));
+    await assertFails(db('otro').collection('usuarios/ana/compras').get());
+});
+
+test('garantía genera nueva orden enlazada sin alterar entrega/pagos y rechaza origen ajeno', async () => {
+    const s = servicio('ana');
+    await entorno.withSecurityRulesDisabled(c => c.firestore().doc('equipos/a').update({ estado: 'entregado', abono: 50000, firmaCliente: 'firma-original' }));
+    await s.crearRetrabajo('ana', 'a', 0, 'La pantalla volvió a fallar', 'hija');
+    await s.crearRetrabajo('ana', 'a', 0, 'La pantalla volvió a fallar', 'hija');
+    const padre = await s.leerOrden('ana', 'a'), hija = await s.leerOrden('ana', 'hija');
+    assert.equal(padre.estado, 'entregado'); assert.equal(padre.abono, 50000); assert.equal(padre.firmaCliente, 'firma-original');
+    assert.equal(hija.origenGarantia, 'a'); assert.equal(hija.idOrden, 'KRF-000002');
+    await assertFails(db('otro').doc('equipos/hija').get());
+    await assertFails(db('ana').doc('equipos/falsa').set({ ...base, schemaVersion: 1, origenGarantia: 'ajena' }));
+});

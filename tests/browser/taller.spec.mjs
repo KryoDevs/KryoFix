@@ -154,3 +154,90 @@ test('la ficha en tema oscuro conserva contraste de texto y fondo', async ({ pag
     });
     expect(contraste).toBeGreaterThan(4.5);
 });
+
+test('compras pendientes, recepción y devolución funcionan desde la ficha', async ({ page }) => {
+    const errores = await preparar(page);
+    await page.getByRole('button', { name: 'Gestión del taller', exact: true }).click();
+    const d = page.getByRole('dialog', { name: 'Gestión del taller', exact: true });
+    await d.getByRole('button', { name: 'Compras', exact: true }).click();
+    for (const [k, v] of Object.entries({ nombre: 'Pantalla nueva', marca: 'Apple', modelo: 'iPhone 13', proveedor: 'Proveedor de prueba', cantidad: '3', costo: '25000' })) await d.locator('[name="' + k + '"]').fill(v);
+    await d.getByRole('button', { name: 'Registrar compra pendiente' }).click();
+    await expect(d.locator('[name="id"]')).toContainText('Pantalla nueva');
+    await d.getByRole('button', { name: 'Confirmar resolución de compra' }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('Proveedor de prueba · recibida');
+    await d.getByRole('button', { name: 'Inventario', exact: true }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('disponible 3 / reservado 0');
+    const f = d.locator('form').filter({ has: page.getByRole('button', { name: 'Confirmar movimiento de inventario' }) });
+    await f.locator('[name="tipo"]').selectOption('devolucion');
+    await f.locator('[name="cantidad"]').fill('1'); await f.locator('[name="motivo"]').fill('Defecto al probar el repuesto');
+    await f.getByRole('button').click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('disponible 2 / reservado 0');
+    await expect(d.locator('.ficha-cuerpo')).toContainText('devolucion -1'); expect(errores).toEqual([]);
+});
+
+test('garantía abre una orden vinculada sin reabrir la original', async ({ page }) => {
+    await preparar(page);
+    await page.evaluate(() => window.__db.collection('equipos').doc('a').update({ estado: 'entregado', abono: 50000 }));
+    // Entregadas quedan fuera del filtro inicial: abrir mediante el enlace privado.
+    await page.evaluate(() => { window.location.hash = '#orden=a'; });
+    // La apertura por hash se escucha al iniciar; usar el historial accesible en la gestión.
+    await page.getByRole('button', { name: 'Gestión del taller', exact: true }).click();
+    const gestion = page.getByRole('dialog', { name: 'Gestión del taller', exact: true });
+    await gestion.getByRole('button', { name: /KRF-000001 · Cliente de prueba/ }).click();
+    const d = page.locator('#ficha-dialog');
+    await d.getByRole('button', { name: 'Garantía', exact: true }).click();
+    const f = d.locator('form').filter({ has: page.getByRole('button', { name: 'Crear orden de retrabajo' }) });
+    await f.locator('[name="motivo"]').fill('Pantalla con falla recurrente');
+    await f.getByRole('button').click();
+    await expect(d.getByRole('button', { name: 'Abrir orden de retrabajo' })).toBeVisible();
+    await d.getByRole('button', { name: 'Abrir orden de retrabajo' }).click();
+    await expect(d.getByRole('button', { name: 'Ver orden original de garantía' })).toBeVisible();
+    expect(await page.evaluate(() => window.__db._datos.get('equipos').get('a').estado)).toBe('entregado');
+});
+
+test('firma táctil/lápiz conserva trazos al rotar y confirma entrega', async ({ page }) => {
+    const errores = await preparar(page);
+    await page.evaluate(() => window.__db.collection('equipos').doc('a').update({ estado: 'reparado', costo: 0, abono: 0,
+        calidad: { pantalla: 'correcto', carga: 'correcto', audio: 'correcto', camaras: 'correcto', conectividad: 'correcto' } }));
+    await page.evaluate(() => window.TechFix.archivarProyecto('a'));
+    const canvas = page.locator('#canvas-firma'); await expect(canvas).toBeVisible();
+    const r = await canvas.boundingBox();
+    await canvas.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: r.x + 15, clientY: r.y + 20 });
+    await canvas.dispatchEvent('pointermove', { pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: r.x + 80, clientY: r.y + 50 });
+    await canvas.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1, isPrimary: true });
+    const antes = await canvas.evaluate(c => c.toDataURL());
+    const v = page.viewportSize(); await page.setViewportSize({ width: v.height, height: v.width });
+    expect(await canvas.evaluate(c => c.toDataURL())).toBe(antes);
+    await page.getByRole('button', { name: /Guardar.*Entrega|Guardar.*firma|Confirmar entrega/i }).click();
+    await expect.poll(() => page.evaluate(() => window.__db._datos.get('equipos').get('a').estado)).toBe('entregado');
+    expect(errores).toEqual([]);
+});
+
+test('viewport reducido por teclado mantiene formularios alcanzables y objetivos táctiles', async ({ page }) => {
+    await preparar(page); const d = await ficha(page, 'Diagnóstico');
+    await page.setViewportSize({ width: page.viewportSize().width, height: 350 });
+    await d.locator('[name="causa"]').fill('Prueba con teclado abierto');
+    await d.getByRole('button', { name: 'Guardar diagnóstico', exact: true }).click();
+    await expect(d.locator('.ficha-cabecera + p')).toContainText('Revisión 1');
+    expect(await d.evaluate(n => n.scrollWidth <= n.clientWidth + 1)).toBe(true);
+    if (await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches)) {
+        const botones = await d.locator('.ficha-pestanas button').evaluateAll(ns => ns.map(n => n.getBoundingClientRect().height));
+        expect(botones.every(h => h >= 44)).toBe(true);
+    }
+});
+
+test('página de aprobación muestra texto seguro y confirma decisión sin login', async ({ page }) => {
+    const token = 'a'.repeat(43); let decisiones = 0;
+    await page.route('**/api/aprobacion', async route => {
+        const d = route.request().postDataJSON();
+        if (d.decision) decisiones++;
+        await route.fulfill({ json: d.decision ? { confirmado: true, decision: d.decision } : {
+            expira: Date.now() + 3600000, presupuesto: { version: 1, total: 12000, lineas: [{ concepto: '<img src=x onerror=alert(1)>', cantidad: 1, precio: 12000 }], plazo: '3 días', condiciones: 'Pruebas incluidas' } } });
+    });
+    await page.goto('/aprobacion.html#' + token);
+    await expect(page.locator('#detalle-presupuesto')).toContainText('<img src=x onerror=alert(1)>');
+    await expect(page.locator('#detalle-presupuesto img')).toHaveCount(0);
+    await page.getByLabel('Tu nombre').fill('Cliente de prueba'); await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Aprobar presupuesto', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Decisión confirmada: aprobado'); expect(decisiones).toBe(1);
+});

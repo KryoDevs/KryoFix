@@ -210,8 +210,8 @@ test('entrega rechaza montos que cambiaron después de mostrar el resumen de fir
     c.window.TechFix.archivarProyecto('a');
     c.document.getElementById('chk-saldar-entrega').checked = true;
     const canvas = c.document.getElementById('canvas-firma');
-    canvas.dispatchEvent(new c.window.MouseEvent('mousedown', { clientX: 5, clientY: 5 }));
-    canvas.dispatchEvent(new c.window.MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    canvas.dispatchEvent(new c.window.PointerEvent('pointerdown', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 5, clientY: 5 }));
+    canvas.dispatchEvent(new c.window.PointerEvent('pointermove', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 20, clientY: 20 }));
     await c.op('pago', { monto: 10000, medio: 'efectivo' });
     c.document.getElementById('btn-guardar-firma').click();
     await tick(30);

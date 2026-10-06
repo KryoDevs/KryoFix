@@ -76,8 +76,8 @@ test('entrega borra PIN y solo registra pago con confirmacion explicita', async 
     assert.equal(checkbox.checked, false);
     checkbox.checked = true;
     const canvas = document.getElementById('canvas-firma');
-    canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 5, clientY: 5 }));
-    canvas.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    canvas.dispatchEvent(new window.PointerEvent('pointerdown', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 5, clientY: 5 }));
+    canvas.dispatchEvent(new window.PointerEvent('pointermove', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 20, clientY: 20 }));
     document.getElementById('btn-guardar-firma').click();
     await esperarHasta(() => db._datos.get('equipos').get('a').estado === 'entregado');
     const guardado = db._datos.get('equipos').get('a');

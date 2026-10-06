@@ -68,6 +68,15 @@
           }
         ]
       }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "functionId": "api",
+          "region": "us-central1"
+        }
+      }
     ]
   },
   "emulators": {
@@ -82,6 +91,29 @@
     "ui": {
       "enabled": false
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9199
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "kryofix",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log",
+        ".env.*"
+      ]
+    }
+  ],
+  "storage": {
+    "rules": "storage.rules"
   }
 }

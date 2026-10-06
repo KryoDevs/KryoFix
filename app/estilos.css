@@ -1372,3 +1372,18 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 .acciones-secundarias { width: 100%; }
 .acciones-secundarias summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .acciones-secundarias .btn-icon { margin: 4px 4px 4px 0; }
+
+/* Teléfonos/tablets: objetivos táctiles, lápiz y teclado virtual. No se bloquea el zoom. */
+.ficha-dialog { max-height: min(96dvh, calc(var(--alto-visible, 100dvh) - 16px)); overflow-y: auto; overscroll-behavior: contain; }
+.modal-content { max-height: min(95dvh, calc(var(--alto-visible, 100dvh) - 20px)); box-sizing: border-box; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.ficha-cabecera h2 { min-width: 0; }
+.ficha-cabecera > button { flex-shrink: 0; }
+.ficha-form, .ficha-cuerpo, .ficha-campo { overflow-wrap: anywhere; }
+@media (pointer: coarse), (max-width: 640px) {
+    button, .btn-icon, .acciones-secundarias summary { min-height: 44px; touch-action: manipulation; }
+    input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; min-height: 44px; }
+    .ficha-campo { min-height: 44px; }
+    .ficha-pestanas button { min-width: 44px; }
+}
+.aprobacion-contenido { text-align: left; max-width: 720px; margin: auto; }
+.aprobacion-contenido li { overflow-wrap: anywhere; margin: 12px 0; }
