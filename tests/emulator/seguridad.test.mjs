@@ -94,3 +94,44 @@ test('dos reservas concurrentes no consumen la misma última unidad', async () =
     const stock = (await s.listar('ana', 'repuestos'))[0];
     assert.equal(stock.disponible, 0); assert.equal(stock.reservado, 1);
 });
+
+
+// Construye una escritura maliciosa que omite el servicio del navegador.
+function stockDirecto({ opId, disponible = 0, reservado = 1, repuestoId = 'lote' }) {
+    const cliente = db('ana');
+    const batch = cliente.batch();
+    const reserva = { id: opId, repuestoId, nombre: 'Pantalla', cantidad: 1, costoUnitario: 20000, estado: 'reservada', en: 1 };
+    batch.update(cliente.doc('equipos/a'), { reservas: [reserva], revisionOrden: 1, ultimaOperacion: opId, actualizado: serverTime() });
+    batch.set(cliente.doc('usuarios/ana/eventos/' + opId), { uid: 'ana', ordenId: 'a', accion: 'reservar',
+        huella: 'a'.repeat(64), resumen: 'Reserva', confirmado: serverTime(), revision: 1,
+        repuesto: { repuestoId, cantidad: 1, reservaId: opId, antes: null, despues: reserva } });
+    batch.update(cliente.doc('usuarios/ana/repuestos/lote'), { disponible, reservado,
+        ultimaOperacion: opId, actualizado: serverTime() });
+    return batch.commit();
+}
+
+test('reglas rechazan reserva sin autorización aunque se omita el servicio', async () => {
+    const s = servicio('ana');
+    await s.guardarRepuesto('ana', { nombre: 'Pantalla', marca: 'Apple', modelo: 'iPhone 13', cantidad: 1, costo: 20000 }, 'lote');
+    await assert.rejects(s.ejecutar({ id: 'a', uid: 'ana', revision: 0, opId: 'servicio-denegado', accion: 'reservar',
+        datos: { repuestoId: 'lote', cantidad: 1, compatibilidadConfirmada: true } }), { code: 'sin-autorizacion' });
+    await assertFails(stockDirecto({ opId: 'cliente-malicioso' }));
+    assert.equal((await db('ana').doc('usuarios/ana/repuestos/lote').get()).data().disponible, 1);
+    assert.equal((await s.leerOrden('ana', 'a')).revisionOrden, 0);
+});
+
+test('reglas exigen lote y deltas exactos; servicio reserva, consume y libera', async () => {
+    const s = servicio('ana');
+    await entorno.withSecurityRulesDisabled(c => c.firestore().doc('equipos/a').update({ costo: 0 }));
+    await s.guardarRepuesto('ana', { nombre: 'Pantalla', marca: 'Apple', modelo: 'iPhone 13', cantidad: 2, costo: 20000 }, 'lote');
+    await assertFails(stockDirecto({ opId: 'cantidad-falsa', disponible: 0, reservado: 1 }));
+    await assertFails(stockDirecto({ opId: 'lote-falso', disponible: 1, reservado: 1, repuestoId: 'otro-lote' }));
+    await s.ejecutar({ id: 'a', uid: 'ana', revision: 0, opId: 'reserva-1', accion: 'reservar', datos: { repuestoId: 'lote', cantidad: 1, compatibilidadConfirmada: true } });
+    await s.ejecutar({ id: 'a', uid: 'ana', revision: 1, opId: 'consumo-1', accion: 'consumir', datos: { repuestoId: 'lote', reservaId: 'reserva-1' } });
+    await s.ejecutar({ id: 'a', uid: 'ana', revision: 2, opId: 'reserva-2', accion: 'reservar', datos: { repuestoId: 'lote', cantidad: 1, compatibilidadConfirmada: true } });
+    await s.ejecutar({ id: 'a', uid: 'ana', revision: 3, opId: 'liberacion-2', accion: 'liberar', datos: { repuestoId: 'lote', reservaId: 'reserva-2' } });
+    const stock = (await db('ana').doc('usuarios/ana/repuestos/lote').get()).data();
+    assert.equal(stock.disponible, 1);
+    assert.equal(stock.reservado, 0);
+    await assertFails(db('ana').doc('usuarios/ana/repuestos/lote').update({ disponible: 0, reservado: 1, ultimaOperacion: 'reserva-2', actualizado: serverTime() }));
+});

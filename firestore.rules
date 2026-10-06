@@ -77,6 +77,11 @@ service cloud.firestore {
             (etapas[estado] >= etapas.get(antes.estado, 1) - 1 || correccion)
             && (estado != 'entregado' || entregaValida(antes, despues))));
     }
+    function reservasVinculadas(antes, despues) {
+      let e = getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(despues.ultimaOperacion)).data;
+      let stock = getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/repuestos/$(e.repuesto.repuestoId)).data;
+      return stock.ultimaOperacion == despues.ultimaOperacion && stock.actualizado == request.time;
+    }
     function revisionValida(equipoId) {
       let d = request.resource.data;
       let antes = resource.data;
@@ -90,6 +95,7 @@ service cloud.firestore {
         ) : (
           d.revisionOrden == antes.get('revisionOrden', 0) + 1
           && d.actualizado == request.time && d.ultimaOperacion is string
+          && (!d.diff(antes).affectedKeys().hasAny(['reservas']) || reservasVinculadas(antes, d))
           && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(d.ultimaOperacion)).data.ordenId == equipoId
           && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(d.ultimaOperacion)).data.revision == d.revisionOrden
         );
@@ -102,6 +108,7 @@ service cloud.firestore {
       allow read:   if esDueno();
       allow get: if autenticado() && !exists(/databases/$(database)/documents/equipos/$(equipoId));
       allow create: if seAutoAsigna()
+                    && request.resource.data.get('reservas', []).size() == 0
                     && request.resource.data.estado in ['ingresado', 'revision']
                     && (request.resource.data.get('schemaVersion', 1) < 2 || (
                         request.resource.data.revisionOrden == 0
@@ -240,6 +247,42 @@ service cloud.firestore {
       }
     }
     match /usuarios/{uid}/repuestos/{repuestoId} {
+      function reservaCoherente(e, antes, despues) {
+        let a = antes.get('reservas', []);
+        let d = despues.get('reservas', []);
+        let r = e.repuesto.despues;
+        let vieja = e.repuesto.antes;
+        return d is list && d.size() <= 40 && d.hasAny([r])
+          && r.id == e.repuesto.reservaId && r.repuestoId == repuestoId
+          && r.cantidad == e.repuesto.cantidad
+          && (e.accion == 'reservar'
+            ? (r.id == request.resource.data.ultimaOperacion && r.estado == 'reservada'
+              && r.nombre == resource.data.nombre && r.costoUnitario == resource.data.costo
+              && d.size() == a.size() + 1 && d.removeAll([r]) == a)
+            : (a.hasAny([vieja]) && vieja.estado == 'reservada'
+              && r.diff(vieja).affectedKeys().hasOnly(['estado'])
+              && r.estado == (e.accion == 'consumir' ? 'consumida' : 'liberada')
+              && a.size() == d.size() && a.removeAll([vieja]).size() == a.size() - 1
+              && d.removeAll([r]) == a.removeAll([vieja])));
+      }
+      function movimientoPermitido() {
+        let d = request.resource.data;
+        let r = resource.data;
+        let e = getAfter(/databases/$(database)/documents/usuarios/$(uid)/eventos/$(d.ultimaOperacion)).data;
+        let antes = get(/databases/$(database)/documents/equipos/$(e.ordenId)).data;
+        let despues = getAfter(/databases/$(database)/documents/equipos/$(e.ordenId)).data;
+        let n = e.repuesto.cantidad;
+        return e.uid == uid && e.confirmado == request.time
+          && antes.uid == uid && antes.estado != 'entregado'
+          && despues.ultimaOperacion == d.ultimaOperacion
+          && despues.revisionOrden == antes.get('revisionOrden', 0) + 1
+          && e.repuesto.repuestoId == repuestoId && n is int && n > 0 && n <= 10000
+          && (e.accion == 'liberar' || autorizada(antes))
+          && reservaCoherente(e, antes, despues)
+          && ((e.accion == 'reservar' && d.disponible == r.disponible - n && d.reservado == r.reservado + n)
+            || (e.accion == 'consumir' && d.disponible == r.disponible && d.reservado == r.reservado - n)
+            || (e.accion == 'liberar' && d.disponible == r.disponible + n && d.reservado == r.reservado - n));
+      }
       allow read: if autenticado() && request.auth.uid == uid;
       allow create: if autenticado() && request.auth.uid == uid
         && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 120
@@ -254,7 +297,7 @@ service cloud.firestore {
         && request.resource.data.disponible >= 0 && request.resource.data.reservado >= 0
         && request.resource.data.disponible + request.resource.data.reservado <= resource.data.disponible + resource.data.reservado
         && request.resource.data.actualizado == request.time
-        && getAfter(/databases/$(database)/documents/usuarios/$(uid)/eventos/$(request.resource.data.ultimaOperacion)).data.accion in ['reservar', 'consumir', 'liberar'];
+        && movimientoPermitido();
     }
 
     // -------------------------------------------------------------------------

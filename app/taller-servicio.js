@@ -39,18 +39,17 @@
                 if ((p.revisionOrden || 0) !== revision) throw error('conflicto', 'La orden cambió en otra sesión. Recarga la ficha y revisa los datos antes de guardar.');
                 const ahora = Date.now();
                 let resultado;
-                let repuestoRef, repuestoParche, pagoOriginalRef;
+                let repuestoRef, repuestoParche, pagoOriginalRef, movimientoRepuesto;
                 if (['reservar', 'consumir', 'liberar'].includes(accion)) {
                     if (p.estado === 'entregado') throw error('orden-entregada', 'No se pueden cambiar repuestos de una orden entregada.');
                     repuestoRef = privada(uid, 'repuestos').doc(datos.repuestoId);
                     const rs = await tx.get(repuestoRef);
                     if (!rs.exists) throw error('not-found', 'Repuesto no encontrado.');
                     const r = rs.data();
-                    if (accion !== 'liberar' && !D().autorizado(p)) throw error('sin-autorizacion', 'Autoriza un presupuesto vigente antes de reservar o consumir repuestos.');
+                    if (accion !== 'liberar' && !(p.presupuesto ? D().autorizado(p) : Number(p.costo || 0) === 0)) throw error('sin-autorizacion', 'Autoriza un presupuesto vigente antes de reservar o consumir repuestos.');
                     const reservas = (p.reservas || []).map(x => ({ ...x }));
                     let resumen;
                     if (accion === 'reservar') {
-                        if (!D().autorizado(p)) throw error('sin-autorizacion', 'Autoriza el presupuesto antes de reservar.');
                         const n = D().cantidad(datos.cantidad);
                         if (r.disponible < n) throw error('sin-stock', 'No hay stock suficiente. Registra la compra pendiente en las notas de la orden.');
                         if (String(r.modelo).trim().toLowerCase() !== String(p.modelo).trim().toLowerCase() || String(r.marca).trim().toLowerCase() !== String(p.equipo).trim().toLowerCase()) throw error('incompatible', 'El repuesto no coincide con la marca/modelo. Verifica la variante antes de reservar.');
@@ -58,12 +57,15 @@
                         if (reservas.length >= 40) throw error('limite', 'Límite de movimientos de repuestos por orden alcanzado.');
                         reservas.push({ id: opId, repuestoId: datos.repuestoId, nombre: r.nombre, cantidad: n, costoUnitario: r.costo, estado: 'reservada', en: ahora });
                         repuestoParche = { disponible: r.disponible - n, reservado: (r.reservado || 0) + n };
+                        movimientoRepuesto = { repuestoId: datos.repuestoId, cantidad: n, reservaId: opId, antes: null, despues: { ...reservas[reservas.length - 1] } };
                         resumen = 'Reserva: ' + n + ' × ' + r.nombre;
                     } else {
                         const reserva = reservas.find(x => x.id === datos.reservaId && x.repuestoId === datos.repuestoId);
                         if (!reserva || reserva.estado !== 'reservada') throw error('reserva-invalida', 'La reserva ya fue consumida o liberada.');
                         if ((r.reservado || 0) < reserva.cantidad) throw error('stock-invalido', 'Revisa el inventario: reserva inconsistente.');
+                        movimientoRepuesto = { repuestoId: datos.repuestoId, cantidad: reserva.cantidad, reservaId: reserva.id, antes: { ...reserva } };
                         reserva.estado = accion === 'consumir' ? 'consumida' : 'liberada';
+                        movimientoRepuesto.despues = { ...reserva };
                         repuestoParche = { reservado: r.reservado - reserva.cantidad,
                             disponible: r.disponible + (accion === 'liberar' ? reserva.cantidad : 0) };
                         resumen = (accion === 'consumir' ? 'Consumo: ' : 'Liberación: ') + reserva.cantidad + ' × ' + r.nombre;
@@ -100,6 +102,7 @@
                     en: ahora, confirmado: timestampServidor(), revision: revision + 1 };
                 if (accion === 'presupuestar' || accion === 'autorizar') eventoNuevo.presupuesto = resultado.parche.presupuesto;
                 if (accion === 'garantia') eventoNuevo.garantia = resultado.parche.garantia;
+                if (movimientoRepuesto) eventoNuevo.repuesto = movimientoRepuesto;
                 tx.set(eventoRef, eventoNuevo);
                 return { repetida: false };
             });
