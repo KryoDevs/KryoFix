@@ -348,6 +348,7 @@ export function montarApp({
         }
     }
 
+    window.eval(leer('app/dominio.js'));
     window.eval(leer(script));
 
     return { dom, window, document: window.document, db, auth, swal, errores, trazos };

@@ -12,12 +12,17 @@
 (function () {
     'use strict';
 
+    const Dominio = window.TechFixDominio;
+
     const btnTheme = document.getElementById('btn-status-theme');
     if (btnTheme) {
+        const temaInicial = document.documentElement.getAttribute('data-theme');
+        btnTheme.setAttribute('aria-pressed', String(temaInicial === 'dark'));
         btnTheme.addEventListener('click', () => {
             const actual = document.documentElement.getAttribute('data-theme');
             const nuevo = actual === 'dark' ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', nuevo);
+            btnTheme.setAttribute('aria-pressed', String(nuevo === 'dark'));
             try {
                 localStorage.setItem('theme', nuevo);
             } catch (_e) {
@@ -26,7 +31,7 @@
         });
     }
 
-    if (typeof firebase === 'undefined') {
+    if (typeof firebase === 'undefined' || !Dominio) {
         // Sin SDK (red bloqueada, primer arranque sin conexion): se avisa en vez
         // de dejar el mensaje de "buscando tu equipo..." para siempre.
         document.getElementById('loader').style.display = 'none';
@@ -45,7 +50,9 @@
         appId: '1:434780023940:web:e595dc76ac51d865a7a6d1'
     };
 
-    firebase.initializeApp(firebaseConfig);
+    if (!firebase.apps || !firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
     const db = firebase.firestore();
 
     const loader = document.getElementById('loader');
@@ -62,7 +69,7 @@
     const formBuscar = document.getElementById('form-buscar-orden');
     const inputCodigo = document.getElementById('input-codigo-orden');
 
-    const PASOS = ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado'];
+    const PASOS = Dominio.ESTADOS;
 
     const ETIQUETAS = {
         ingresado: 'Ingresado',
@@ -72,13 +79,7 @@
         entregado: 'Entregado'
     };
 
-    const PORCENTAJES = {
-        ingresado: 20,
-        revision: 45,
-        repuesto: 65,
-        reparado: 90,
-        entregado: 100
-    };
+    const PORCENTAJES = Dominio.PORCENTAJES_ESTADO;
 
     // Mensaje en lenguaje claro para cada estado (lo primero que busca el cliente).
     const MENSAJES = {
@@ -90,6 +91,12 @@
     };
 
     let cancelarSuscripcion = null;
+
+    /**
+     * Extrae y sanea el ID de seguimiento aunque el usuario pegue la URL
+     * completa del ticket, un query string (?id=...) o un codigo con "#".
+     */
+    const extraerCodigoOrden = Dominio.extraerCodigoOrden;
 
     function formatearActualizado(ts) {
         if (!ts || !Number.isFinite(Number(ts))) return 'Sincronizado en tiempo real';
@@ -124,38 +131,39 @@
         if (progresoPorcentaje) progresoPorcentaje.textContent = pct + '%';
         if (progresoBarra) progresoBarra.style.width = pct + '%';
 
-        if (msgEstado) msgEstado.textContent = MENSAJES[estadoActual] || 'Estamos trabajando en tu equipo.';
+        if (msgEstado) msgEstado.textContent = MENSAJES[estValido] || 'Estamos trabajando en tu equipo.';
 
         // Cascada: se encienden todos los pasos hasta el actual.
-        const indice = PASOS.indexOf(estadoActual);
+        const indice = PASOS.indexOf(estValido);
         PASOS.forEach((paso, i) => {
             const nodo = document.getElementById('step-' + paso);
             if (!nodo) return;
             // 'repuesto' es opcional: solo se marca si el equipo paso realmente por ahi.
             const alcanzado = indice >= 0 && i <= indice && !(paso === 'repuesto' && indice > PASOS.indexOf('repuesto'));
             nodo.classList.toggle('active', alcanzado);
-            nodo.classList.toggle('current', estadoActual === paso);
-            nodo.setAttribute('aria-current', estadoActual === paso ? 'step' : 'false');
+            nodo.classList.toggle('current', estValido === paso);
+            nodo.setAttribute('aria-current', estValido === paso ? 'step' : 'false');
         });
 
         // Solo se invita a retirar cuando esta listo, no cuando ya fue entregado.
-        msgReparado.style.display = estadoActual === 'reparado' ? 'block' : 'none';
+        msgReparado.style.display = estValido === 'reparado' ? 'block' : 'none';
     }
 
     function consultarOrden(codigoRaw) {
-        const limpio = String(codigoRaw || '').trim();
+        const limpio = extraerCodigoOrden(codigoRaw);
         if (cancelarSuscripcion) {
             cancelarSuscripcion();
             cancelarSuscripcion = null;
         }
         if (!limpio) {
-            mostrarError('Falta el codigo del equipo. Vuelve a escanear el QR de tu ticket.');
+            mostrarError('Falta el codigo del equipo. Vuelve a escanear el QR de tu ticket o escribe un codigo valido.');
             return;
         }
 
+        content.style.display = 'none';
         loader.style.display = 'block';
         errorDiv.style.display = 'none';
-        if (inputCodigo && !inputCodigo.value) inputCodigo.value = limpio;
+        if (inputCodigo) inputCodigo.value = limpio;
 
         cancelarSuscripcion = db
             .collection('seguimiento')
@@ -187,6 +195,12 @@
             consultarOrden(valor);
         });
     }
+
+    window.TechFixStatus = {
+        extraerCodigoOrden,
+        consultarOrden,
+        mostrarEstado
+    };
 
     const ticketId = new URLSearchParams(window.location.search).get('id');
     consultarOrden(ticketId);

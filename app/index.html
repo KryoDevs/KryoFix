@@ -22,13 +22,14 @@
           - un CDN comprometido no puede ejecutar codigo en una pagina que
             maneja datos personales de clientes;
           - permite una Content-Security-Policy estricta (script-src 'self').
-        Versiones: firebase 10.8.1 (compat) y sweetalert2 11.14.5.
+        Versiones: firebase 10.14.1 (compat) y sweetalert2 11.26.25.
         El orden de los <script defer> se respeta.
     -->
     <script defer src="vendor/firebase-app-compat.js"></script>
     <script defer src="vendor/firebase-auth-compat.js"></script>
     <script defer src="vendor/firebase-firestore-compat.js"></script>
     <script defer src="vendor/sweetalert2.all.min.js"></script>
+    <script defer src="dominio.js"></script>
     <script defer src="app.js"></script>
 </head>
 <body>
@@ -97,7 +98,7 @@
             <div id="aviso-vencidos" class="aviso-bloque" role="status" hidden></div>
 
             <div class="dashboard" aria-label="Indicadores clave del taller">
-                <div class="stat-card" data-filtro-kpi="activos" title="Equipos actualmente en el taller">
+                <div class="stat-card" data-filtro-kpi="activos" title="Filtrar equipos actualmente en el taller">
                     <div class="stat-header">
                         <h3>Equipos Activos</h3>
                         <span class="stat-icon" aria-hidden="true">🔧</span>
@@ -105,7 +106,7 @@
                     <p id="stat-activos" class="stat-valor">0</p>
                     <span class="stat-meta">En proceso en laboratorio</span>
                 </div>
-                <div class="stat-card stat-ready" data-filtro-kpi="reparado" title="Equipos listos esperando retiro">
+                <div class="stat-card stat-ready" data-filtro-kpi="reparado" title="Filtrar equipos listos esperando retiro">
                     <div class="stat-header">
                         <h3>Listos para Retiro</h3>
                         <span class="stat-icon" aria-hidden="true">✅</span>
@@ -113,7 +114,7 @@
                     <p id="stat-listos" class="stat-valor">0</p>
                     <span class="stat-meta">Pendientes de entrega</span>
                 </div>
-                <div class="stat-card" data-filtro-kpi="todos" title="Equipos reparados o entregados este mes">
+                <div class="stat-card" data-filtro-kpi="todos" title="Ver historial completo de reparaciones">
                     <div class="stat-header">
                         <h3>Reparados (Mes)</h3>
                         <span class="stat-icon" aria-hidden="true">📈</span>
@@ -129,7 +130,7 @@
                     <p id="stat-ingresos" class="stat-valor">$0</p>
                     <span class="stat-meta">Facturacion de ordenes del mes</span>
                 </div>
-                <div class="stat-card stat-pending">
+                <div class="stat-card stat-pending" data-filtro-kpi="saldo" title="Ordenar activos por mayor saldo pendiente">
                     <div class="stat-header">
                         <h3>Saldo por Cobrar</h3>
                         <span class="stat-icon" aria-hidden="true">⏳</span>
@@ -162,6 +163,14 @@
                                 <label for="telefono">Telefono (WhatsApp):</label>
                                 <input type="tel" id="telefono" placeholder="56912345678" required inputmode="numeric" autocomplete="tel">
                                 <small>Con codigo de pais, solo numeros (56 para Chile).</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="prioridad">Prioridad de atencion:</label>
+                                <select id="prioridad">
+                                    <option value="normal">🟢 Normal</option>
+                                    <option value="alta">🟠 Prioridad Alta</option>
+                                    <option value="urgente">🔴 Urgente / Express</option>
+                                </select>
                             </div>
                         </div>
 
@@ -197,7 +206,7 @@
                             <div class="form-group">
                                 <label for="pin">Contrasena / PIN del equipo:</label>
                                 <input type="text" id="pin" placeholder="Ej. 1234 o Patron Z" maxlength="40" autocomplete="off">
-                                <small>Se guarda oculto en la ficha y nunca se imprime ni se publica.</small>
+                                <small>Se guarda oculto en la ficha, nunca se imprime y se borra al entregar.</small>
                             </div>
                         </div>
 
@@ -218,6 +227,12 @@
                                 <label for="falla">Detalle de la falla / sintomas (opcional):</label>
                                 <input type="text" id="falla" placeholder="Ej. Se mojo ayer, no carga ni enciende..." maxlength="200">
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="notas">Notas tecnicas / bitacora interna (opcional):</label>
+                            <input type="text" id="notas" placeholder="Ej. Requiere fuente regulada, cliente autoriza revision de placa..." maxlength="240">
+                            <small>Solo visible para el tecnico en el tablero (no se imprime en la boleta).</small>
                         </div>
 
                         <div class="form-group">
@@ -261,7 +276,7 @@
                     </div>
                     <div class="controles-busqueda">
                         <label class="sr-only" for="buscador">Buscar equipos</label>
-                        <input type="search" id="buscador" placeholder="🔍 Buscar por cliente, orden, modelo, falla o IMEI...">
+                        <input type="search" id="buscador" placeholder="🔍 Buscar por cliente, orden, modelo, falla o IMEI... (atajo: /)">
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
                             <option value="activos">Solo activos en taller</option>
@@ -276,11 +291,13 @@
                         <select id="ordenar-proyectos" title="Criterio de ordenamiento">
                             <option value="recientes">Mas recientes primero</option>
                             <option value="antiguos">Mas antiguos primero</option>
+                            <option value="prioridad">Mayor prioridad</option>
                             <option value="saldo">Mayor saldo pendiente</option>
                             <option value="cliente">Cliente (A - Z)</option>
                         </select>
                         <button type="button" id="btn-exportar" class="btn-icon btn-exportar" title="Exportar a CSV lo que estas viendo">📤 Exportar CSV</button>
                     </div>
+                    <div id="filtros-rapidos" class="filtros-rapidos" role="toolbar" aria-label="Filtros rapidos por etapa"></div>
                 </div>
 
                 <p id="loader" class="loader" style="display: none;" role="status">Cargando base de datos...</p>
@@ -291,31 +308,40 @@
         <!-- VISTA: CATALOGO Y PRECIOS -->
         <section id="vista-catalogo" aria-label="Catalogo de precios" hidden>
             <div class="panel-ingreso">
-                <h2>📚 Agregar al catalogo de precios</h2>
-                <p class="texto-ayuda">Define tu tarifario estandar de reparaciones. Se autocompletara al ingresar un equipo de esa marca y modelo.</p>
-                <form id="catalogo-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="cat-marca">Marca:</label>
-                            <input type="text" id="cat-marca" placeholder="Ej. Apple" required maxlength="60">
-                        </div>
-                        <div class="form-group">
-                            <label for="cat-modelo">Modelo:</label>
-                            <input type="text" id="cat-modelo" placeholder="Ej. iPhone 13" required maxlength="80">
-                        </div>
+                <div class="panel-cabecera-colapsable">
+                    <div>
+                        <h2>📚 Agregar al catalogo de precios</h2>
+                        <p class="texto-ayuda">Define tu tarifario estandar de reparaciones. Se autocompletara al ingresar un equipo de esa marca y modelo.</p>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="cat-reparacion">Servicio / Reparacion:</label>
-                            <input type="text" id="cat-reparacion" placeholder="Ej. Cambio de pantalla original" required maxlength="120">
+                    <button type="button" id="btn-catalogo-base" class="btn-icon" title="Cargar servicios estandar de taller si aun no los tienes">
+                        ⚡ Cargar tarifario sugerido
+                    </button>
+                </div>
+                <div class="cuerpo-colapsable">
+                    <form id="catalogo-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cat-marca">Marca:</label>
+                                <input type="text" id="cat-marca" placeholder="Ej. Apple" required maxlength="60">
+                            </div>
+                            <div class="form-group">
+                                <label for="cat-modelo">Modelo:</label>
+                                <input type="text" id="cat-modelo" placeholder="Ej. iPhone 13" required maxlength="80">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="cat-precio">Precio estandar ($):</label>
-                            <input type="number" id="cat-precio" placeholder="Ej. 85000" required min="0" step="1" inputmode="numeric">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cat-reparacion">Servicio / Reparacion:</label>
+                                <input type="text" id="cat-reparacion" placeholder="Ej. Cambio de pantalla original" required maxlength="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="cat-precio">Precio estandar ($):</label>
+                                <input type="number" id="cat-precio" placeholder="Ej. 85000" required min="0" step="1" inputmode="numeric">
+                            </div>
                         </div>
-                    </div>
-                    <button type="submit" class="btn-guardar btn-catalogo">➕ Guardar en catalogo</button>
-                </form>
+                        <button type="submit" class="btn-guardar btn-catalogo">➕ Guardar en catalogo</button>
+                    </form>
+                </div>
             </div>
 
             <div class="panel-registros">
@@ -340,6 +366,11 @@
         <div class="modal-content">
             <h2 id="titulo-firma">Firma de conformidad de entrega</h2>
             <p class="texto-ayuda">El cliente declara recibir su equipo conforme a la orden de servicio.</p>
+            <div id="resumen-entrega-firma" class="resumen-entrega-firma"></div>
+            <label class="fila-saldar-entrega" for="chk-saldar-entrega">
+                <input type="checkbox" id="chk-saldar-entrega">
+                <span>Registrar saldo pendiente como pagado al entregar</span>
+            </label>
             <canvas id="canvas-firma" width="600" height="300" aria-label="Area de firma del cliente"></canvas>
             <div class="modal-actions">
                 <button type="button" id="btn-limpiar-firma" class="btn-icon">Limpiar lienzo</button>

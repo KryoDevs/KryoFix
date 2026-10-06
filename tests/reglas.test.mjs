@@ -39,7 +39,8 @@ describe('Reglas de Firestore: coleccion publica', () => {
     const seguimiento = bloque('seguimiento');
 
     test('es legible sin autenticacion (la usa el cliente desde el QR)', () => {
-        assert.match(seguimiento, /allow read:\s*if true;/);
+        assert.match(seguimiento, /allow get:\s*if true;/);
+        assert.match(seguimiento, /allow list:\s*if false;/);
     });
 
     test('solo admite los cuatro campos no personales', () => {

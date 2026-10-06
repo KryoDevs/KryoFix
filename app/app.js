@@ -41,16 +41,6 @@
     const PLAZO_ENTREGA_DIAS = 30;
     const AVISO_TALLER_DIAS = 7;
 
-    const ESTADOS = ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado'];
-    const ESTADO_TEXTO = {
-        ingresado: 'Ingresado',
-        revision: 'En Revision',
-        repuesto: 'Esperando Repuesto',
-        reparado: 'Listo para Entregar',
-        entregado: 'Entregado'
-    };
-    const ESTADO_ETAPAS = { ingresado: 1, revision: 2, repuesto: 3, reparado: 4, entregado: 5 };
-
     const PREFIJO_ORDEN = 'TF-';
     const CLAVE_CONTADOR = 'techfix.contadorOrden';
 
@@ -92,15 +82,20 @@
         const faltantes = [];
         if (typeof firebase === 'undefined') faltantes.push('Firebase');
         if (typeof Swal === 'undefined') faltantes.push('SweetAlert2');
+        if (!window.TechFixDominio) faltantes.push('Dominio');
         return faltantes;
     }
 
-    if (typeof firebase === 'undefined') {
+    if (dependenciasFaltantes().length) {
         // Sin Firebase no hay app: se avisa y no se sigue ejecutando.
         faltaDependencia(dependenciasFaltantes());
         window.TechFix = window.TechFix || { iniciada: false, sinDependencias: true };
         return;
     }
+
+    const Dominio = window.TechFixDominio;
+    const { ESTADOS, ESTADO_TEXTO, PRIORIDAD_TEXTO, PRIORIDAD_PESO,
+        escapeHtml, normalizarTelefono, permiteEstado, calcularSaldo } = Dominio;
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -166,23 +161,7 @@
     // UTILIDADES
     // ========================
 
-    /** Escapa texto para interpolarlo en HTML, incluidas comillas (atributos). */
-    function escapeHtml(text) {
-        if (text === null || text === undefined) return '';
-        return String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    const CLP = (v) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(Number(v) || 0);
-
-    /** Deja solo digitos; descarta prefijos "+" y separadores para usar en wa.me. */
-    function normalizarTelefono(valor) {
-        return String(valor || '').replace(/\D+/g, '');
-    }
+    const CLP = Dominio.formatearCLP;
 
     /**
      * Fecha corta para mostrar y para el CSV, tolerante a datos viejos:
@@ -384,6 +363,11 @@
         catalogoDB = [];
         pinesVisibles.clear();
         filtroCatalogo = '';
+        if (form) reiniciarFormulario();
+        if ($('lista-catalogo')) $('lista-catalogo').replaceChildren();
+        if (capaImpresion) capaImpresion.replaceChildren();
+        if (modalFirma) cerrarModalFirma();
+        if (userEmailDisplay) userEmailDisplay.textContent = '';
         if (listaProyectos) listaProyectos.innerHTML = '';
         if (statActivos) statActivos.textContent = '0';
         if (statListos) statListos.textContent = '0';
@@ -402,6 +386,7 @@
 
         if (user) {
             const mismoUsuario = currentUser && currentUser.uid === user.uid;
+            if (!mismoUsuario) limpiarSesionEnPantalla();
             currentUser = user;
             loginScreen.style.display = 'none';
             appContent.style.display = 'block';
@@ -545,7 +530,7 @@
             .onSnapshot(
                 (snapshot) => {
                     proyectos = [];
-                    snapshot.forEach((doc) => proyectos.push({ id: doc.id, ...doc.data() }));
+                    snapshot.forEach((doc) => proyectos.push({ ...doc.data(), id: doc.id }));
                     loader.style.display = 'none';
                     revisarRecordatorios();
                     renderizarProyectos();
@@ -607,7 +592,8 @@
         if (!card || !filtroEstado) return;
         const destino = card.getAttribute('data-filtro-kpi');
         if (destino) {
-            filtroEstado.value = destino;
+            filtroEstado.value = destino === 'saldo' ? 'activos' : destino;
+            if (destino === 'saldo' && ordenarProyectos) ordenarProyectos.value = 'saldo';
             renderizarProyectos();
         }
     });
@@ -628,23 +614,8 @@
         return Math.max(0, Math.floor((Date.now() - desde) / 86400000));
     }
 
-    /**
-     * Transiciones permitidas desde el estado actual:
-     *   - hacia adelante, todos los estados posteriores;
-     *   - hacia atras, solo un paso (corregir un clic equivocado).
-     * 'entregado' se reserva para la entrega con firma.
-     */
-    function permiteEstado(p, nuevo) {
-        if (!p) return false;
-        const actual = ESTADO_ETAPAS[p.estado] || 1;
-        const destino = ESTADO_ETAPAS[nuevo];
-        if (!destino) return false;
-        if (nuevo === 'entregado') return p.estado === 'entregado';
-        return destino >= actual - 1;
-    }
-
     function construirTarjeta(p) {
-        const saldo = (Number(p.costo) || 0) - (Number(p.abono) || 0);
+        const saldo = calcularSaldo(p);
         const tarjeta = el('article', {
             class: 'tarjeta-proyecto' + (p.estado === 'entregado' ? ' entregado-style' : ''),
             attrs: { 'data-id': p.id }
@@ -665,6 +636,9 @@
             tarjeta.appendChild(el('span', { class: 'badge-espera', text: '⏱ En taller hace ' + dias + ' dias' }));
         }
 
+        if (p.prioridad && p.prioridad !== 'normal' && PRIORIDAD_TEXTO[p.prioridad]) {
+            tarjeta.appendChild(el('span', { class: 'badge-prioridad prioridad-' + p.prioridad, text: PRIORIDAD_TEXTO[p.prioridad] }));
+        }
         tarjeta.appendChild(el('h3', { text: p.cliente || 'Sin nombre' }));
         tarjeta.appendChild(el('p', { class: 'tarjeta-dispositivo', text: [p.equipo, p.modelo].filter(Boolean).join(' - ') }));
         if (p.idOrden) tarjeta.appendChild(el('p', { class: 'detalle-extra orden-chip', text: 'Orden: ' + p.idOrden }));
@@ -692,6 +666,7 @@
         }
 
         tarjeta.appendChild(el('p', { class: 'tarjeta-falla', text: 'Falla: ' + (p.falla || 'Sin detalle') }));
+        if (p.notas) tarjeta.appendChild(el('p', { class: 'nota-interna', text: 'Nota interna: ' + p.notas }));
         if (p.accesorios) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: p.accesorios }));
 
         const precio = el('p', { class: 'precio', text: 'Costo: ' + CLP(p.costo) });
@@ -820,7 +795,9 @@
             return true;
         });
 
-        if (criterio === 'antiguos') {
+        if (criterio === 'prioridad') {
+            lista.sort((a, b) => (PRIORIDAD_PESO[b.prioridad] || 1) - (PRIORIDAD_PESO[a.prioridad] || 1));
+        } else if (criterio === 'antiguos') {
             lista.sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
         } else if (criterio === 'saldo') {
             lista.sort((a, b) => {
@@ -837,6 +814,7 @@
     function renderizarProyectos() {
         if (!listaProyectos) return;
         const filtrados = proyectosFiltrados();
+        renderizarFiltrosRapidos();
         if (contadorResultados) {
             contadorResultados.textContent = filtrados.length + (filtrados.length === 1 ? ' orden' : ' ordenes');
         }
@@ -863,7 +841,8 @@
     function revisarRecordatorios() {
         renderizarAvisos(
             proyectos.filter((p) => {
-                const d = diasEnTaller(p);
+                const desde = Number(p.fechaReparacion || p.timestamp);
+                const d = desde ? Math.floor((Date.now() - desde) / 86400000) : null;
                 return p.estado === 'reparado' && d !== null && d >= PLAZO_ENTREGA_DIAS;
             })
         );
@@ -1097,9 +1076,11 @@
         // ---- Validaciones de negocio (ademas de las de firestore.rules) ----
         const fallo = (campo, titulo, mensaje) => {
             marcarFormulario(campo);
+            const nodo = $(campo);
+            if (nodo) nodo.focus();
             if (typeof Swal !== 'undefined') Swal.fire(titulo, mensaje, 'warning');
         };
-        if (!cliente) return fallo('cliente', 'Falta el cliente', 'Escribe el nombre del cliente.');
+        if (!cliente || cliente.length > 120) return fallo('cliente', 'Falta el cliente', 'Escribe el nombre del cliente.');
         if (telefono.length < 8) {
             return fallo(
                 'telefono',
@@ -1146,6 +1127,8 @@
             accesorios: $('accesorios').value.trim(),
             falla: fallaFinal,
             estado,
+            prioridad: $('prioridad').value,
+            notas: $('notas').value.trim(),
             costo,
             abono,
             // ISO 8601: ordenable, sin ambiguedad de zona horaria y compatible
@@ -1272,6 +1255,10 @@
                     '<input id="edit-falla" type="text" maxlength="200" value="' + escapeHtml(previo.falla || '') + '">' +
                     '<label for="edit-accesorios" class="etiqueta-modal">Condicion y accesorios</label>' +
                     '<input id="edit-accesorios" type="text" maxlength="200" value="' + escapeHtml(previo.accesorios || '') + '">' +
+                    '<label for="edit-notas" class="etiqueta-modal">Notas internas</label>' +
+                    '<input id="edit-notas" maxlength="240" value="' + escapeHtml(previo.notas || '') + '">' +
+                    '<label for="edit-prioridad" class="etiqueta-modal">Prioridad</label>' +
+                    '<select id="edit-prioridad">' + Dominio.PRIORIDADES.map((v) => '<option value="' + v + '"' + (v === (previo.prioridad || 'normal') ? ' selected' : '') + '>' + PRIORIDAD_TEXTO[v] + '</option>').join('') + '</select>' +
                     '<label for="edit-costo" class="etiqueta-modal">Presupuesto total ($)</label>' +
                     '<input id="edit-costo" type="number" min="0" step="1" value="' + Number(previo.costo || 0) + '">' +
                     '<label for="edit-abono" class="etiqueta-modal">Abono ($)</label>' +
@@ -1292,7 +1279,7 @@
                     if (!Number.isFinite(abono) || abono < 0 || abono > costo) {
                         return Swal.showValidationMessage('El abono debe estar entre 0 y el presupuesto total.');
                     }
-                    return { cliente, telefono, falla, accesorios, costo, abono };
+                    return { cliente, telefono, falla, accesorios, costo, abono, notas: $('edit-notas').value.trim(), prioridad: $('edit-prioridad').value };
                 }
             });
             valores = respuesta && respuesta.value ? respuesta.value : null;
@@ -1306,7 +1293,7 @@
         const costo = Number(valores.costo ?? previo.costo ?? 0);
         const abono = Number(valores.abono ?? previo.abono ?? 0);
 
-        if (!cliente || telefono.length < 8 || !Number.isFinite(costo) || costo < 0 || !Number.isFinite(abono) || abono < 0 || abono > costo) {
+        if (!cliente || cliente.length > 120 || telefono.length < 8 || !Number.isFinite(costo) || costo < 0 || !Number.isFinite(abono) || abono < 0 || abono > costo) {
             if (typeof Swal !== 'undefined') Swal.fire('Datos invalidos', 'Revisa el cliente, telefono y montos.', 'warning');
             return false;
         }
@@ -1319,6 +1306,8 @@
                 telefono,
                 falla,
                 accesorios,
+                notas: String(valores.notas ?? previo.notas ?? '').slice(0, 240),
+                prioridad: Dominio.PRIORIDADES.includes(valores.prioridad) ? valores.prioridad : (previo.prioridad || 'normal'),
                 costo,
                 abono
             });
@@ -1362,6 +1351,10 @@
     }
 
     function archivarProyecto(id) {
+        const p = proyectos.find((x) => x.id === id);
+        if (!p || !currentUser || p.estado === 'entregado') return;
+        $('resumen-entrega-firma').textContent = p.cliente + ' · Saldo: ' + CLP(calcularSaldo(p));
+        $('chk-saldar-entrega').checked = false;
         currentFirmaId = id;
         firmaTieneTrazos = false;
         // El canvas se dimensiona DESPUES de mostrar el modal: mientras esta
@@ -1471,7 +1464,7 @@
                 const qr = window.qrcode(0, 'M');
                 qr.addData(url);
                 qr.make();
-                const contenedor = el('div', { html: qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }) });
+                const contenedor = el('div', { html: qr.createSvgTag({ cellSize: 4, margin: 16, scalable: true }) });
                 const svg = contenedor.querySelector('svg');
                 if (svg) {
                     svg.setAttribute('width', '120');
@@ -1534,7 +1527,7 @@
         ]);
         ponerQr(bloqueQr, url);
         bloqueQr.appendChild(el('p', { class: 'url-respaldo', text: url }));
-        bloqueQr.appendChild(el('p', { class: 'url-respaldo', text: 'Numero de orden: ' + mostrarIdOrden(p) }));
+        bloqueQr.appendChild(el('p', { class: 'url-respaldo', text: 'Codigo de seguimiento: ' + p.id }));
         boleta.appendChild(bloqueQr);
 
         boleta.appendChild(el('p', { class: 'nota', text: 'El PIN del equipo no se imprime por seguridad.' }));
@@ -1707,12 +1700,13 @@
 
     escuchar('btn-guardar-firma', 'click', async () => {
         const btn = $('btn-guardar-firma');
-        if (!currentFirmaId) return;
+        if (!currentFirmaId || !currentUser || btn.disabled) return;
         if (!firmaTieneTrazos) {
             Swal.fire('Falta la firma', 'El cliente debe firmar antes de registrar la entrega.', 'warning');
             return;
         }
         const equipoActual = proyectos.find((x) => x.id === currentFirmaId);
+        if (!equipoActual) return;
         const etiqueta = btn.textContent;
         btn.textContent = 'Guardando...';
         btn.disabled = true;
@@ -1730,6 +1724,8 @@
             const ahora = Date.now();
             const parche = {
                 estado: 'entregado',
+                pin: '',
+                abono: $('chk-saldar-entrega').checked ? Number(equipoActual.costo) : Number(equipoActual.abono || 0),
                 firmaCliente: dataUrl,
                 fechaEntrega: ahora,
                 uid
@@ -1836,7 +1832,7 @@
             .onSnapshot(
                 (snapshot) => {
                     catalogoDB = [];
-                    snapshot.forEach((doc) => catalogoDB.push({ id: doc.id, ...doc.data() }));
+                    snapshot.forEach((doc) => catalogoDB.push({ ...doc.data(), id: doc.id }));
                     renderizarCatalogo();
                 },
                 (error) => avisarError('Error al cargar el catalogo', normalizarError(error))
@@ -2112,7 +2108,9 @@
     // ========================
     /** Escapa un campo CSV (comillas dobles y separadores). */
     function campoCsv(valor) {
-        return '"' + String(valor === null || valor === undefined ? '' : valor).replace(/"/g, '""') + '"';
+        let texto = String(valor === null || valor === undefined ? '' : valor);
+        if (typeof valor === 'string' && /^[\s]*[=+@-]|^[\t\r\n]/.test(texto)) texto = "'" + texto;
+        return '"' + texto.replace(/"/g, '""') + '"';
     }
 
     function exportCSV(filas) {
@@ -2271,6 +2269,57 @@
     }
     window.addEventListener('online', actualizarEstadoRed);
     window.addEventListener('offline', actualizarEstadoRed);
+
+    function renderizarFiltrosRapidos() {
+        const contenedor = $('filtros-rapidos');
+        if (!contenedor) return;
+        contenedor.replaceChildren();
+        for (const estado of ESTADOS) {
+            const cantidad = proyectos.filter((p) => p.estado === estado).length;
+            const boton = el('button', { class: 'filtro-chip', text: ESTADO_TEXTO[estado] + ' · ' + cantidad,
+                attrs: { type: 'button', 'aria-pressed': String(filtroEstado.value === estado) } });
+            boton.addEventListener('click', () => { filtroEstado.value = estado; renderizarProyectos(); });
+            contenedor.appendChild(boton);
+        }
+    }
+
+    document.querySelectorAll('[data-filtro-kpi]').forEach((nodo) => {
+        nodo.setAttribute('role', 'button');
+        nodo.tabIndex = 0;
+        nodo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nodo.click(); }
+        });
+    });
+    escuchar(document, 'keydown', (e) => {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || !currentUser ||
+            e.target.closest('input, textarea, select, [contenteditable], [role="dialog"]') ||
+            modalFirma.style.display === 'flex' || document.querySelector('.swal2-container')) return;
+        e.preventDefault();
+        mostrarVista('taller');
+        buscador.focus();
+    });
+
+    let importandoCatalogo = false;
+    escuchar('btn-catalogo-base', 'click', async () => {
+        if (!currentUser || importandoCatalogo) return;
+        importandoCatalogo = true;
+        const uid = currentUser.uid;
+        try {
+            const respuesta = await Swal.fire({ title: 'Cargar tarifario de ejemplo',
+                text: 'Precios orientativos en CLP, no cotizaciones actuales. Revisa y ajusta cada servicio antes de usarlo.',
+                showCancelButton: true, confirmButtonText: 'Agregar ejemplos', cancelButtonText: 'Cancelar' });
+            if (!respuesta.isConfirmed || !currentUser || currentUser.uid !== uid) return;
+            const lote = db.batch();
+            for (const item of Dominio.CATALOGO_SUGERIDO) {
+                if (catalogoDB.some((c) => c.marca === item.marca && c.modelo === item.modelo && c.reparacion === item.reparacion)) continue;
+                const clave = encodeURIComponent(uid + '|' + item.marca + '|' + item.modelo + '|' + item.reparacion);
+                lote.set(db.collection(COL_CATALOGO).doc(clave), { ...item, uid });
+            }
+            await lote.commit();
+            toast('success', 'Tarifario de ejemplo agregado');
+        } catch (err) { avisarError('No se pudo cargar el tarifario', err); }
+        finally { importandoCatalogo = false; }
+    });
 
     // ========================
     // API interna (navegacion por consola y pruebas automatizadas)

@@ -17,10 +17,10 @@ copiadas tal cual desde paquetes npm publicados. Se sirven desde el mismo origen
 
 | Archivo | Origen | Versión |
 |---------|--------|---------|
-| `firebase-app-compat.js` | `firebase/firebase-app-compat.js` | 10.8.1 |
-| `firebase-auth-compat.js` | `firebase/firebase-auth-compat.js` | 10.8.1 |
-| `firebase-firestore-compat.js` | `firebase/firebase-firestore-compat.js` | 10.8.1 |
-| `sweetalert2.all.min.js` | `sweetalert2/dist/sweetalert2.all.min.js` | 11.14.5 |
+| `firebase-app-compat.js` | `firebase/firebase-app-compat.js` | 10.14.1 |
+| `firebase-auth-compat.js` | `firebase/firebase-auth-compat.js` | 10.14.1 |
+| `firebase-firestore-compat.js` | `firebase/firebase-firestore-compat.js` | 10.14.1 |
+| `sweetalert2.all.min.js` | `sweetalert2/dist/sweetalert2.all.min.js` | 11.26.25 |
 | `qrcode.js` | `qrcode-generator/dist/qrcode.js` | 2.0.4 |
 
 Licencias: Firebase (Apache-2.0), SweetAlert2 (MIT), qrcode-generator (MIT).

@@ -22,7 +22,7 @@
                     <p>Portal de Seguimiento en Vivo</p>
                 </div>
             </div>
-            <button type="button" id="btn-status-theme" class="btn-icon btn-status-tema" aria-label="Cambiar tema">🌓</button>
+            <button type="button" id="btn-status-theme" class="btn-icon btn-status-tema" aria-label="Cambiar tema" aria-pressed="false">🌓</button>
         </div>
 
         <p id="loader" class="loader" role="status">Buscando tu equipo...</p>
@@ -97,9 +97,9 @@
         </p>
 
         <form id="form-buscar-orden" class="status-search-box" aria-label="Consultar otra orden">
-            <label for="input-codigo-orden" class="status-search-label">Consultar por codigo de seguimiento:</label>
+            <label for="input-codigo-orden" class="status-search-label">Consultar por codigo o enlace de seguimiento:</label>
             <div class="status-search-row">
-                <input type="text" id="input-codigo-orden" placeholder="Pega el codigo del ticket..." maxlength="64" autocomplete="off">
+                <input type="text" id="input-codigo-orden" placeholder="Pega el codigo o enlace del ticket..." maxlength="180" autocomplete="off">
                 <button type="submit" class="btn-icon btn-exportar">Consultar</button>
             </div>
         </form>
@@ -110,6 +110,7 @@
     <!-- Dependencias locales: el seguimiento tambien debe abrir sin conexion -->
     <script defer src="vendor/firebase-app-compat.js"></script>
     <script defer src="vendor/firebase-firestore-compat.js"></script>
+    <script defer src="dominio.js"></script>
     <script defer src="status.js"></script>
 </body>
 </html>
