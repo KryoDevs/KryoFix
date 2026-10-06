@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 const chromium = { browserName: 'chromium', launchOptions: { executablePath: process.env.KRYOFIX_CHROMIUM || undefined, args: ['--no-sandbox', '--disable-dev-shm-usage'] } };
 export default defineConfig({
+    reporter: process.env.CI ? [['github'], ['list']] : 'list',
     testDir: './tests/browser', timeout: 45000, workers: 2,
     use: { baseURL: 'http://127.0.0.1:8080', headless: true, trace: 'retain-on-failure' },
     projects: [

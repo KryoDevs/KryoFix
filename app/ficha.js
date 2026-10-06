@@ -284,6 +284,11 @@
                         campo(f, 'confirmar', 'Autorización de borrado al vencer', { opciones: [['no', 'No autorizo'], ['si', 'Confirmo la política y el borrado al vencer']] }); f.finalizar();
                     }
                 } else if (seccion === 'Garantía') {
+                    if (orden.estado !== 'entregado') {
+                        info('La garantía se gestiona sobre una orden entregada. Esta orden aún está en reparación; no se puede abrir aquí un caso de garantía.');
+                        if (orden.origenGarantia) cuerpo.appendChild(boton('Gestionar garantía en la orden original', () => abrir(orden.origenGarantia)));
+                        return;
+                    }
                     info('El retrabajo tiene su propia orden y numeración. No reabre ni altera la entrega, firma o pagos originales.');
                     if (orden.garantia?.ordenRetrabajo) cuerpo.appendChild(boton('Abrir orden de retrabajo', () => abrir(orden.garantia.ordenRetrabajo)));
                     if (orden.estado === 'entregado' && !(orden.garantia?.estado === 'abierta' && orden.garantia.ordenRetrabajo)) {

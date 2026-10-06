@@ -59,16 +59,17 @@ En una tarjeta: **Abrir ficha de trabajo**. Secciones:
   Se pueden aplicar plantillas privadas con confirmación de reinicio del avance.
 - **Calidad:** pantalla, carga, audio, cámaras y conectividad; «no aplica» exige motivo.
 - **Presupuesto:** hasta 20 conceptos, cantidades, precios, total calculado, plazo,
-  condiciones, versiones y registro manual de aprobación/rechazo del cliente.
+  condiciones, versiones, registro manual de decisión y enlace protegido de 48 horas.
   Cambiar el presupuesto deja su autorización pendiente otra vez.
 - **Pagos:** movimientos idempotentes y reversos, sin borrar el pago original.
   Abonos de recepción/legados se preservan como apertura sin inventar fechas.
 - **Repuestos:** reserva, consumo y liberación por lote; comprobación de marca,
   modelo y confirmación humana de variante; nunca stock negativo.
-- **Garantía:** evaluación asociada a la orden entregada, sin alterar su entrega
-  original. Los cambios se conservan en eventos; no crea automáticamente otra orden.
-- **Contacto:** prepara WhatsApp y registra manualmente el resultado. **No envía
-  automáticamente ni acredita recepción del mensaje.**
+- **Evidencias:** migración verificada, consulta privada de foto/firma y retención.
+- **Garantía:** seguimiento y creación explícita de una orden de retrabajo vinculada,
+  sin alterar la entrega ni los pagos originales.
+- **Contacto:** WhatsApp manual, consentimiento/revocación y cola de mensajes.
+  El worker automático requiere configuración; aceptación no acredita entrega.
 - **Historial:** eventos privados con fecha confirmada, versiones de presupuestos
   y cambios de garantía. El historial legado de estados se sigue conservando.
 
@@ -84,7 +85,8 @@ Botón **Gestión del taller**:
 
 - Historial paginado del servidor, más allá de las 500 órdenes del tablero.
 - Agenda de clientes creados con el nuevo flujo.
-- Inventario por lotes recibidos, proveedor, costo y variante.
+- Inventario por lotes, proveedor, costo y variante; ajustes/devoluciones auditados.
+- Compras pendientes, recepción completa idempotente y cancelación sin crear stock.
 - Plantillas propias, versionadas, con fuente/manual y un paso por línea; las
   órdenes conservan una copia y no cambian al editar una plantilla.
 - Informe que recorre todas las órdenes, suma deuda incluyendo entregados y calcula
@@ -93,8 +95,9 @@ Botón **Gestión del taller**:
 - Lista de pendientes sugeridos de autorización, repuestos y retiro.
 
 El tablero conserva su límite de 500 registros con aviso visible. El informe
-completo es una consulta paginada bajo demanda, **no un agregado contable atómico
-ni un proceso de servidor programado**. Puede generar lecturas facturables.
+paginado sigue disponible y no es atómico. También existe un botón de informe
+consistente calculado por el servidor, con zona Santiago y límites explícitos de
+5000 órdenes / 10000 pagos. Ambas consultas pueden generar lecturas facturables.
 
 ## Confiabilidad y privacidad
 
@@ -187,7 +190,7 @@ QR ni claves locales. Se mantienen APIs internas `TechFix*` por compatibilidad.
 
 - Calidad/preview/producción dependen de `verificacion.yml`: pruebas locales,
   emulador y navegador. Una falla bloquea el despliegue de hosting.
-- Al integrar en `main`, el workflow publica **reglas e índices antes del hosting**
+- Al integrar en `main`, el workflow publica **backend, reglas e índices antes del hosting**
   con la cuenta de servicio ya configurada en GitHub. Esa cuenta debe tener los
   permisos correspondientes; si no los tiene, el workflow falla antes de hosting.
 - El preview de PR no modifica reglas del proyecto de producción. Probar los

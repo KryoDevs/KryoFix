@@ -42,6 +42,9 @@ test('ficha de diagnóstico guarda datos en navegador real y navega sin errores 
     await d.getByRole('button', { name: 'Guardar diagnóstico', exact: true }).click();
     await expect(d.locator('[name="causa"]')).toHaveValue('Conector inspeccionado: terminal dañado');
     await expect(d.locator('.ficha-cabecera + p')).toContainText('Revisión 1');
+    await d.getByRole('button', { name: 'Garantía', exact: true }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('aún está en reparación');
+    await expect(d.getByRole('button', { name: 'Registrar seguimiento de garantía' })).toHaveCount(0);
     await d.getByRole('button', { name: 'Cerrar ficha' }).click();
     await expect(d).not.toBeVisible();
     expect(errores).toEqual([]);
