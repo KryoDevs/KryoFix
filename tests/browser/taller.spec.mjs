@@ -136,6 +136,8 @@ test('SDK Firebase empaquetado inicia el login sin credenciales ni escrituras re
     await expect(page.locator('#login-screen')).toBeVisible();
     await expect(page.locator('#login-screen h1')).toHaveText('KryoFix');
     await expect.poll(() => page.evaluate(() => window.TechFix?.iniciada)).toBe(true);
+    await page.evaluate(async () => { if ('serviceWorker' in navigator) await navigator.serviceWorker.ready; });
+    await expect(page.getByRole('dialog', { name: 'Version nueva disponible', exact: true })).toHaveCount(0);
     expect(errores).toEqual([]);
 });
 

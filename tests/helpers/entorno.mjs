@@ -287,7 +287,8 @@ export function montarApp({
     semilla = {},
     conQr = false,
     sinFirebase = false,
-    inyectarScripts = true
+    inyectarScripts = true,
+    antesDeIniciar = () => {}
 } = {}) {
     const virtualConsole = new VirtualConsole();
     const errores = [];
@@ -393,6 +394,7 @@ export function montarApp({
     window.eval(leer('app/taller-dominio.js'));
     window.eval(leer('app/taller-servicio.js'));
     window.eval(leer('app/ficha.js'));
+    antesDeIniciar(window);
     window.eval(leer(script));
 
     return { dom, window, document: window.document, db, auth, swal, errores, trazos };

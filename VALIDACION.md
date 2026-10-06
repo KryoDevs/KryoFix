@@ -8,8 +8,8 @@ main, despliegue, migración productiva ni mensajes enviados a clientes.
 | Capa | Resultado |
 |---|---|
 | ESLint + auditoría estática | Correctos |
-| Pruebas de código, UI y motor de backend | **157 aprobadas localmente** |
-| Matriz Node 20.19 / 22 | CI aprobado para el corte anterior de 156; nueva ejecución requerida tras la última regresión |
+| Pruebas de código, UI y motor de backend | **160 aprobadas localmente** |
+| Matriz Node 20.19 / 22 | Verificación final pendiente después de las regresiones de PWA/sesión |
 | Firestore Emulator | **10 escenarios aprobados en CI** |
 | API + Auth + Functions + Storage emulados | **4 escenarios end-to-end aprobados en CI** |
 | Chromium + WebKit | **75 ejecuciones aprobadas en CI**: 15 casos × 5 perfiles |
@@ -18,8 +18,11 @@ main, despliegue, migración productiva ni mensajes enviados a clientes.
 | Proyecto de staging, proveedor real y dispositivos físicos | **Pendientes de configuración/validación externa** |
 
 CI completo del segundo ciclo: [37483586254](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37483586254).
-Ese ciclo incluye API, Storage y los cinco perfiles de navegador. La última revisión
-agrega un caso de callback temprano de mensajería y vuelve a exigir toda la suite.
+Ese ciclo incluye API, Storage y los cinco perfiles de navegador. Los ciclos siguientes detectaron un fallo intermitente de arranque en WebKit: una
+notificación modal de actualización interceptaba los controles. Se reemplazó por un
+banner no modal, sin activación forzada del worker, y se añadieron regresiones.
+Se exige de nuevo toda la suite, más dos repeticiones de WebKit (30 ejecuciones).
+La matriz Chromium se repitió localmente: **120 ejecuciones aprobadas**.
 
 ## Pendientes funcionales implementados en esta continuación
 
@@ -97,6 +100,8 @@ probarse en hardware. No es una certificación completa de accesibilidad WCAG.
 | Retención podía competir con reemplazo de archivo | Bloqueo durante eliminación y comprobación de identidad antes de marcar borrado |
 | Presupuesto malformado podía llegar al enlace | Validación de desglose, total y montos de la orden en el servidor |
 | Callback del proveedor podía adelantarse a la respuesta del envío | Confirmación temprana y estados terminales protegidos; caso adicional de respuesta perdida |
+| Arranque PWA / WebKit | Falsa actualización en primera instalación podía bloquear botones | Banner no modal, detección de reemplazo real, actualización explícita y protección de borradores; regresiones de arranque |
+| Enlace tardío | Respuesta tras reiniciar sesión podía abrir un modal viejo | Token de ficha comprobado antes de mostrar el enlace |
 | API privada del mismo origen podía entrar en estrategia genérica del SW | Exclusión explícita de `/api/`; prueba de no interceptación |
 
 No existe un LOOP infinito autónomo. Se repitieron cambios, pruebas, revisión y

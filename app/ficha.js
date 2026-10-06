@@ -214,6 +214,7 @@
                         if (p.autorizacion.estado === 'pendiente') {
                             const enlace = formulario('Generar enlace protegido para el cliente', async () => {
                                 const r = await servicio.remoto('emitir-enlace', { id: orden.id });
+                                if (!vigente(t)) return;
                                 await window.Swal.fire({ target: dialogo, title: 'Enlace del presupuesto', text: 'Compártelo solo con el cliente. Invalida cualquier enlace anterior. Copia antes de cerrar.',
                                     input: 'text', inputValue: window.location.origin + '/aprobacion.html#' + r.token, inputAttributes: { readonly: 'readonly' }, confirmButtonText: 'Listo' });
                             }); enlace.finalizar();

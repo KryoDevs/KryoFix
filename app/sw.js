@@ -12,7 +12,7 @@
  *   - Firestore / Auth / APIs: NUNCA se interceptan.
  * ========================================================================== */
 
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE_APP = `techfix-app-${VERSION}`;
 const CACHE_VENDOR = `techfix-vendor-${VERSION}`;
 const CACHES_VIGENTES = [CACHE_APP, CACHE_VENDOR];
@@ -82,8 +82,8 @@ self.addEventListener('install', (event) => {
         (async () => {
             await precachearTolerante(CACHE_APP, RECURSOS_APP);
             await precachearTolerante(CACHE_VENDOR, RECURSOS_VENDOR);
-            // Activa la version nueva sin esperar a que se cierren las pestanas.
-            await self.skipWaiting();
+            // Primera instalación se activa sola. Una actualización espera
+            // SKIP_WAITING explícito: no interrumpir firmas o borradores abiertos.
         })()
     );
 });

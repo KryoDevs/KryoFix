@@ -65,7 +65,7 @@ export default [
             }
         }
     },
-    { files: ['tests/browser/**/*.mjs'], languageOptions: { globals: { window: 'readonly', document: 'readonly', getComputedStyle: 'readonly' } } },
+    { files: ['tests/browser/**/*.mjs'], languageOptions: { globals: { window: 'readonly', document: 'readonly', navigator: 'readonly', getComputedStyle: 'readonly' } } },
     {
         // Herramientas y tests corren en Node
         files: ['tools/**/*.mjs', 'tests/**/*.mjs', '*.mjs', 'functions/**/*.js'],

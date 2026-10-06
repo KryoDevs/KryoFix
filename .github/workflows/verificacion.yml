@@ -24,6 +24,8 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - name: Flujos en navegador y móvil
         run: node tools/ci-ejecutar.mjs npm run test:browser
+      - name: Repetir WebKit para detectar carreras de arranque/PWA
+        run: node tools/ci-ejecutar.mjs npm run test:browser -- --project=safari-tablet --repeat-each=2
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

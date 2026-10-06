@@ -2054,34 +2054,36 @@
     // 8. PWA / SERVICE WORKER
     // ========================
     function avisarVersionNueva(reg) {
-        if (typeof Swal === 'undefined') return;
-        Swal.fire({
-            title: 'Version nueva disponible',
-            text: 'Hay una actualizacion de la aplicacion. Recarga para usarla.',
-            icon: 'info',
-            showCancelButton: true,
-            confirmButtonText: 'Recargar ahora',
-            cancelButtonText: 'Mas tarde'
-        }).then((r) => {
-            if (!r.isConfirmed) return;
-            if (navigator.serviceWorker.controller) {
-                navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+        if ($('actualizacion-disponible')) return;
+        const aviso = el('aside', { class: 'aviso-actualizacion', attrs: { id: 'actualizacion-disponible', role: 'status' } });
+        const mensaje = el('span', { text: 'Hay una versión nueva de KryoFix. Puedes actualizar cuando termines de guardar.' });
+        const actualizar = el('button', { class: 'btn-icon', text: 'Actualizar KryoFix', attrs: { type: 'button' } });
+        actualizar.addEventListener('click', () => {
+            const recepcionPendiente = ['cliente', 'telefono', 'falla'].some(id => $(id)?.value.trim()) || fotoComprimidaBase64 || procesandoFoto;
+            if (ficha.tienePendientes() || borradores.pendientes().length || recepcionPendiente || modalFirma?.style.display === 'flex') {
+                mensaje.textContent = 'Guarda o descarta los borradores y la recepción, y cierra la firma antes de actualizar.';
+                return;
             }
-            if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            else window.location.reload();
+            actualizar.disabled = true;
+            if (reg.waiting) {
+                navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            } else window.location.reload();
         });
+        aviso.append(mensaje, actualizar); document.body.prepend(aviso);
     }
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker
             .register('sw.js')
             .then((reg) => {
-                if (reg.waiting && navigator.serviceWorker.controller) avisarVersionNueva(reg);
+                if (reg.waiting && reg.active && navigator.serviceWorker.controller) avisarVersionNueva(reg);
                 reg.addEventListener('updatefound', () => {
                     const nuevo = reg.installing;
                     if (!nuevo) return;
+                    const reemplazaVersion = !!reg.active && reg.active !== nuevo;
                     nuevo.addEventListener('statechange', () => {
-                        if (nuevo.state === 'installed' && navigator.serviceWorker.controller) avisarVersionNueva(reg);
+                        if (reemplazaVersion && nuevo.state === 'installed' && reg.waiting) avisarVersionNueva(reg);
                     });
                 });
             })

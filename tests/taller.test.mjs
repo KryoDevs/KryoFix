@@ -269,3 +269,18 @@ test('entrega tardía no cierra el modal de firma de otra orden', async t => {
     assert.match(c.document.getElementById('resumen-entrega-firma').textContent, /Otra orden/);
     assert.equal(c.document.getElementById('btn-guardar-firma').disabled, false);
 });
+
+test('un enlace generado tarde no abre una ventana después de cerrar y reiniciar sesión', async t => {
+    const c = await iniciar(t, { presupuesto: { version: 1, total: 50000, lineas: [], autorizacion: { estado: 'pendiente' } } });
+    let responder;
+    c.servicio.remoto = () => new Promise(r => { responder = r; });
+    await c.window.TechFix.abrirFicha('a');
+    const dialog = c.document.getElementById('ficha-dialog');
+    [...dialog.querySelectorAll('nav button')].find(b => b.textContent === 'Presupuesto').click(); await tick();
+    [...dialog.querySelectorAll('button')].find(b => b.textContent === 'Generar enlace protegido para el cliente').click();
+    assert.equal(typeof responder, 'function');
+    c.auth._entrar(null); c.auth._entrar(U);
+    responder({ token: 'a'.repeat(43) }); await tick();
+    assert.ok(!c.swal.llamadas.some(llamada => llamada.title === 'Enlace del presupuesto'));
+    assert.doesNotMatch(dialog.textContent, /Enlace del presupuesto/);
+});

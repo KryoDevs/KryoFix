@@ -1387,3 +1387,5 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 }
 .aprobacion-contenido { text-align: left; max-width: 720px; margin: auto; }
 .aprobacion-contenido li { overflow-wrap: anywhere; margin: 12px 0; }
+.aviso-actualizacion { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 12px; background: var(--primary-soft); color: var(--text-main); border-bottom: 1px solid var(--border-strong); }
+.aviso-actualizacion span { max-width: 760px; }
