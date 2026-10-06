@@ -13,7 +13,8 @@ Stack: HTML/CSS/JavaScript sin bundler + Firebase (Auth, Firestore, Hosting).
 ```
 app/                 Lo que se publica en Firebase Hosting
   index.html         Aplicación del técnico (login + taller + catálogo)
-  app.js             Lógica principal
+  app.js             Orquestación UI, sesión y acceso a Firestore
+  dominio.js         Reglas puras compartidas, estados, importes y códigos
   tema.js            Aplica el tema guardado antes del primer pintado
   status.html/.js    Página pública de seguimiento (la que abre el QR)
   sw.js              Service worker (offline)
@@ -37,7 +38,7 @@ ANALISIS.md          Informes de auditoría y su resolución
 |---------------|-------------------------------|------------------------------------------------------|
 | `equipos`     | **Privada**, solo el dueño    | Orden completa: cliente, teléfono, IMEI, PIN, foto, firma, historial |
 | `catalogo`    | **Privada**, solo el dueño    | Precios de reparación del técnico                     |
-| `seguimiento` | **Pública (solo lectura)**    | Espejo mínimo: `uid`, `estado`, `modelo`, `actualizado` |
+| `seguimiento` | **Pública por ID, sin listado**    | Espejo mínimo: `uid`, `estado`, `modelo`, `actualizado` |
 
 `seguimiento` existe para que la página del QR no necesite acceso a los datos
 personales. Las reglas limitan el documento a esas cuatro claves, así que es
@@ -60,7 +61,7 @@ npm run qr           # regenera app/ticket-qr.png (usa el dominio de producción
 npm run assets       # vendor + qr, tras actualizar dependencias o el dominio
 ```
 
-`npm run check` es la verificación completa: lint, auditoría estática y 75 tests.
+`npm run check` es la verificación completa: lint, auditoría estática y 87 tests.
 La auditoría falla si reaparece alguno de los problemas documentados en
 `ANALISIS.md` (consultas sin filtro por `uid`, clases CSS huérfanas, service
 worker sin `skipWaiting`, archivos no UTF-8, dependencias por CDN, CSP con
@@ -68,7 +69,7 @@ worker sin `skipWaiting`, archivos no UTF-8, dependencias por CDN, CSP con
 
 ### Dependencias de ejecución
 
-Las librerías de runtime (Firebase 10.8.1 compat, SweetAlert2 11.14.5 y
+Las librerías de runtime (Firebase 10.14.1 compat, SweetAlert2 11.26.25 y
 qrcode-generator 2.0.4) **se versionan dentro de `app/vendor/`**, no se cargan de
 un CDN. Las mismas versiones están como `devDependencies` fijadas solo para poder
 copiarlas de forma reproducible con `npm run vendor`. Para subir una versión:
@@ -79,8 +80,8 @@ en algún HTML.
 ## Despliegue
 
 El hosting se publica solo con GitHub Actions (preview en cada PR, producción al
-mergear a `main`). Antes de mergear, el workflow **Calidad** tiene que estar verde:
-el deploy de hosting es independiente y publicaría igual.
+mergear a `main`). Ambos workflows de hosting ejecutan `npm ci` y `npm run check` antes de publicar;
+un fallo de calidad bloquea el despliegue de ese workflow.
 
 **Las reglas e índices de Firestore NO se despliegan con ese workflow** y hay que
 publicarlos manualmente:
@@ -120,3 +121,18 @@ La `apiKey` de Firebase que aparece en el código **no es un secreto**: identifi
 el proyecto y está pensada para ser pública. La protección real son
 `firestore.rules`. El único secreto del repositorio es
 `FIREBASE_SERVICE_ACCOUNT_TECHFIX_TRACKER_9A128`, almacenado en GitHub Actions.
+
+
+## Mejoras de octubre de 2026
+
+- Prioridad normal/alta/urgente y notas internas editables (no se publican ni imprimen).
+- Filtros rápidos por etapa, ordenamiento por prioridad y atajo `/` para buscar.
+- Tarifario **de ejemplo**, con confirmación y sin duplicados al repetir la carga;
+  sus precios son orientativos, no cotizaciones de mercado.
+- Entrega con opción explícita de registrar el saldo pagado (desmarcada inicialmente).
+  El PIN se vacía al entregar; no elimina los PIN de órdenes históricas automáticamente.
+- Consulta pública por ID o enlace completo. El número humano `TF-…` no es el ID:
+  usar el **código de seguimiento** o enlace impreso, no el número humano.
+- CSV protegido frente a fórmulas; campos móviles y controles por teclado corregidos.
+
+Ver `MEJORAS.md` para resultados de los ciclos, límites y tareas pendientes.

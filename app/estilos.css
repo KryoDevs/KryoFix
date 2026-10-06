@@ -1291,3 +1291,36 @@ input:disabled, select:disabled {
     .boleta-qr .url-respaldo { font-size: 8px; word-break: break-all; color: #000; margin-top: 2px; }
     .boleta-pos .nota, .boleta-pos .gracias { text-align: center; font-size: 9px; margin-top: 8px; }
 }
+
+/* Operacion diaria: filtros, prioridades y entrega */
+.filtros-rapidos { display: flex; gap: 8px; flex-wrap: wrap; }
+.filtro-chip {
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border-strong);
+    background: var(--bg-subtle); color: var(--text-secondary); cursor: pointer;
+    font: inherit; font-size: 12px; min-height: 40px;
+}
+.filtro-chip:hover, .filtro-chip[aria-pressed="true"] {
+    background: var(--primary-soft); color: var(--primary); border-color: var(--primary);
+}
+.badge-prioridad { align-self: flex-start; padding: 3px 9px; margin-bottom: 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.prioridad-alta { background: var(--warning-soft); color: var(--warning); }
+.prioridad-urgente { background: var(--danger-soft); color: var(--danger); }
+.nota-interna { padding: 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--bg-subtle); }
+.resumen-entrega-firma { padding: 12px; margin-top: 16px; border-radius: 8px; background: var(--primary-soft); font-weight: 600; overflow-wrap: anywhere; }
+.fila-saldar-entrega { display: flex; gap: 10px; align-items: flex-start; text-align: left; margin-top: 12px; }
+.fila-saldar-entrega input { width: 20px; height: 20px; flex-shrink: 0; }
+.modal-content { max-height: 95dvh; overflow-y: auto; }
+.status-search-row input { min-width: 0; }
+.swal2-popup { background: var(--bg-card); color: var(--text-main); }
+button { font-family: inherit; }
+button:disabled { cursor: not-allowed; opacity: .6; }
+@media (max-width: 640px) {
+    /* flex-basis horizontal heredado producia campos de 220px de alto. */
+    .form-group { flex: 1 1 auto; min-width: 0; }
+    #buscador, #filtro-estado, #ordenar-proyectos, #cat-buscador { flex: 1 1 auto; }
+    .panel-ingreso, .panel-registros { padding: 16px; }
+    .btn-icon, .btn-mini { min-height: 44px; }
+    .tarjeta-header, .device-info-top { flex-wrap: wrap; }
+    .badge-estado { white-space: normal; }
+    .status-container { padding: 18px; }
+}

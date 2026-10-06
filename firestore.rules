@@ -50,7 +50,15 @@ service cloud.firestore {
                     && request.resource.data.abono is number
                     && request.resource.data.abono >= 0
                     && request.resource.data.abono <= request.resource.data.costo;
-      allow update: if esDueno() && seAutoAsigna() && mantieneDueno();
+      allow update: if esDueno() && seAutoAsigna() && mantieneDueno()
+                    && request.resource.data.cliente is string
+                    && request.resource.data.cliente.size() > 0
+                    && request.resource.data.cliente.size() <= 120
+                    && request.resource.data.costo is number
+                    && request.resource.data.costo >= 0
+                    && request.resource.data.abono is number
+                    && request.resource.data.abono >= 0
+                    && request.resource.data.abono <= request.resource.data.costo;
       allow delete: if esDueno();
     }
 
@@ -60,9 +68,17 @@ service cloud.firestore {
     match /catalogo/{itemId} {
       allow read:   if esDueno();
       allow create: if seAutoAsigna()
+                    && request.resource.data.marca is string
+                    && request.resource.data.marca.size() > 0
+                    && request.resource.data.modelo is string
+                    && request.resource.data.modelo.size() > 0
+                    && request.resource.data.reparacion is string
+                    && request.resource.data.reparacion.size() > 0
                     && request.resource.data.precio is number
                     && request.resource.data.precio >= 0;
-      allow update: if esDueno() && seAutoAsigna() && mantieneDueno();
+      allow update: if esDueno() && seAutoAsigna() && mantieneDueno()
+                    && request.resource.data.precio is number
+                    && request.resource.data.precio >= 0;
       allow delete: if esDueno();
     }
 
@@ -80,7 +96,8 @@ service cloud.firestore {
                && request.resource.data.modelo.size() <= 80;
       }
 
-      allow read:   if true;
+      allow get:    if true;
+      allow list:   if false;
       allow create: if seAutoAsigna() && formaValida();
       allow update: if esDueno() && seAutoAsigna() && mantieneDueno() && formaValida();
       allow delete: if esDueno();

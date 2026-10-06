@@ -19,6 +19,7 @@ function montarStatus({ id = 'abc123', semilla = {} } = {}) {
     const { window } = dom;
     const db = crearFirestoreFalso(semilla);
     window.firebase = { initializeApp: () => ({}), firestore: () => db };
+    window.eval(leer('app/dominio.js'));
     window.eval(leer('app/status.js'));
     return { window, document: window.document, db };
 }
@@ -97,4 +98,14 @@ describe('Pagina publica de seguimiento', () => {
         assert.equal(document.getElementById('progreso-porcentaje').textContent, '90%');
         assert.equal(document.getElementById('msg-reparado').style.display, 'block');
     });
+});
+
+test('un enlace pegado consulta su ID y una ruta invalida no consulta Firestore', () => {
+    const { window, document, db } = montarStatus({ id: '', semilla: { seguimiento: { xyz: { modelo: 'Equipo', estado: 'revision' } } } });
+    window.TechFixStatus.consultarOrden('https://ejemplo.test/status.html?id=xyz');
+    assert.equal(document.getElementById('lbl-modelo').textContent, 'Equipo');
+    window.TechFixStatus.consultarOrden('a/b/c');
+    assert.equal(db._oyentes.length, 0);
+    assert.equal(document.getElementById('content').style.display, 'none');
+    window.close();
 });

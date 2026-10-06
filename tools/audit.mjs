@@ -240,6 +240,8 @@ if (cfgApp && cfgStatus && cfgApp.replace(/\s+/g, '') !== cfgStatus.replace(/\s+
 const IDS_DINAMICOS = new Set([
     'pwd-nueva',
     'pwd-repetir',
+    'edit-notas',
+    'edit-prioridad',
     'edit-cliente',
     'edit-telefono',
     'edit-falla',

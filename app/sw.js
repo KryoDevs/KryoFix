@@ -12,7 +12,7 @@
  *   - Firestore / Auth / APIs: NUNCA se interceptan.
  * ========================================================================== */
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE_APP = `techfix-app-${VERSION}`;
 const CACHE_VENDOR = `techfix-vendor-${VERSION}`;
 const CACHES_VIGENTES = [CACHE_APP, CACHE_VENDOR];
@@ -24,6 +24,7 @@ const RECURSOS_APP = [
     './status.html',
     './estilos.css',
     './tema.js',
+    './dominio.js',
     './app.js',
     './status.js',
     './manifest.json',
@@ -83,7 +84,7 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         (async () => {
             const nombres = await caches.keys();
-            await Promise.all(nombres.filter((n) => !CACHES_VIGENTES.includes(n)).map((n) => caches.delete(n)));
+            await Promise.all(nombres.filter((n) => n.startsWith('techfix-') && !CACHES_VIGENTES.includes(n)).map((n) => caches.delete(n)));
             await self.clients.claim();
         })()
     );
@@ -146,7 +147,8 @@ self.addEventListener('fetch', (event) => {
     if (DOMINIOS_EXCLUIDOS.some((d) => url.hostname === d || url.hostname.endsWith('.' + d))) return;
 
     if (request.mode === 'navigate') {
-        event.respondWith(redPrimero(request, CACHE_APP, './index.html'));
+        const respaldo = url.pathname.endsWith('/status.html') ? './status.html' : './index.html';
+        event.respondWith(redPrimero(request, CACHE_APP, respaldo));
         return;
     }
 
