@@ -320,7 +320,7 @@ no convierte todos los objetivos del mapa en tareas terminadas.**
 
 | Fase | Implementado en esta continuación | Pendiente para cerrarla |
 |---|---|---|
-| F1 | Transacciones/revisión para edición, estados, pagos y entrega; epoch de sesión; foto asíncrona protegida; firma detecta resumen obsoleto; reglas y suite de emulador | Ejecutar emulador y probar Firebase real/dos sesiones; resolver avisos de herramientas |
+| F1 | Transacciones/revisión para edición, estados, pagos y entrega; epoch de sesión; foto asíncrona protegida; firma detecta resumen obsoleto; reglas y suite de emulador | Probar Firebase real/dos sesiones; resolver avisos de herramientas (emulador ya aprobado en CI) |
 | F2 | Ficha dedicada por ID privado, secciones, siguiente acción, agrupación de botones, móvil/teclado/temas probados | Revisión visual completa de todos los estados y prueba de impresión física |
 | F3 | Diagnóstico carga/riesgos, hipótesis/causa, calidad y excepciones; plantillas privadas editables/versionadas con fuente y snapshot | Catálogo canónico de variantes y ampliación de árboles técnicos validados |
 | F4 | Presupuestos versionados, autorización manual por versión, pagos/reversos idempotentes, apertura legada, correlativo central, entrega protegida | Autorización pública por enlace y validación integral en staging; no se migran fechas de cobro ficticias |
@@ -333,10 +333,12 @@ no convierte todos los objetivos del mapa en tareas terminadas.**
 - **8 pruebas de navegador aprobadas** en Chromium real, con backend de pruebas
   aislado para los flujos autenticados; incluidas vista de 360 px y contraste de
   ficha en oscuro.
-- Emulador: **bloqueado por ausencia de Java y restricciones de descarga**; no
-  se ejecutó contra producción como alternativa.
-- El CI instala Java 21 y exige emulador + navegador antes de habilitar despliegues.
-  Todavía no hay un resultado de ese CI para estos cambios locales.
+- Emulador: **8 pruebas aprobadas en CI con Java 21**, incluidas concurrencia y
+  escrituras maliciosas de stock. El bloqueo local no impidió la validación remota.
+- **CI aprobado en Node 20.19/22**, emulador y Chromium. Se corrigió la espera
+  asíncrona de una prueba detectada por la matriz y se repitió la validación.
+- Reglas de inventario reforzadas: autorización, deltas exactos y vínculo entre
+  lote, reserva, orden y evento; no solo comprobaciones del servicio del navegador.
 - `npm audit`: 11 avisos transitivos (7 altos, 4 moderados) en herramientas; no hay
   garantía de ausencia de vulnerabilidades. No se forzaron degradaciones del SDK.
 - SDK Firebase 12.19.0 y vendor actualizado; reglas/índices se publicarán antes del
@@ -344,8 +346,10 @@ no convierte todos los objetivos del mapa en tareas terminadas.**
 
 ### Nuevo criterio de salida
 
-No declarar «todas las fases terminadas» ni publicar esta revisión hasta ejecutar
-la suite del emulador, validar reglas/datos legados en staging y resolver las
+No declarar «todas las fases terminadas» ni publicar esta revisión hasta
+validar reglas/datos legados en staging y resolver las
 configuraciones y trabajos pendientes de la tabla. Fotos/firmas siguen en base64;
 WhatsApp no se envía en segundo plano; una autorización registrada por el técnico
 no se presenta como aprobación digital del cliente.
+
+CI verificado del código final: [https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311).

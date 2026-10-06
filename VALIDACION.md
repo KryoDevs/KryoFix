@@ -11,7 +11,8 @@ Fecha: 6 de octubre de 2026. Rama de trabajo de Arena; **sin despliegue ni migra
 | Pruebas locales de dominio, UI y doble de Firestore | **136 aprobadas, 0 fallidas** |
 | Playwright en Chromium real | **8 aprobadas, 0 fallidas** |
 | Diferencias de Git / whitespace | `git diff --check` limpio |
-| Reglas y transacciones en Firestore Emulator | **Bloqueado; no ejecutado** |
+| Reglas y transacciones en Firestore Emulator | **8 aprobadas en CI**, reglas compiladas |
+| Matriz de CI | **Node 20.19 y Node 22 aprobados** |
 | Firebase real / Auth real / staging | **No verificado** |
 | Despliegue o migración de datos reales | **No realizado** |
 | `npm audit` completo | **11 avisos: 7 altos y 4 moderados; 0 críticos** |
@@ -35,9 +36,9 @@ Firestore real y datos legados.
 - Fecha confirmada por servidor para eventos y nuevos pagos; apertura legada sin
   fecha inventada. Indicadores separan presupuesto, saldo y cobros registrados.
 - Reglas nuevas para pertenencia, revisión/transiciones, espejo vinculado,
-  diario inmutable y reversos. **Pendientes de ejecutar contra emulador.**
+  diario inmutable y reversos. **Compiladas y probadas contra emulador en CI.**
 - Migración peligrosa de adopción de órdenes desde consola bloqueada.
-- SDK Firebase actualizado a 12.19.0; vendor regenerado y SW v13.
+- SDK Firebase actualizado a 12.19.0; vendor regenerado y SW v14.
 
 ### Operación y diseño
 
@@ -55,6 +56,8 @@ Firestore real y datos legados.
   revisión al abrir la firma para impedir cobros sobre un resumen obsoleto.
 - Agenda creada en recepciones nuevas y selección explícita de cliente recurrente.
 - Lotes de repuestos, costo/proveedor/variante, reserva, consumo y liberación.
+  Reglas de servidor exigen autorización, deltas exactos, evento nuevo y vínculo
+  entre reserva, lote y orden; ya no dependen solo de controles del navegador.
 - Seguimiento de garantía sin reabrir la entrega original, con copias en eventos.
 - Mensajes de WhatsApp preparados y registro manual del resultado de contacto.
 - Historial paginado e informes bajo demanda más allá de las 500 órdenes del tablero.
@@ -76,6 +79,8 @@ Firestore real y datos legados.
 | Control final | Cambios de calidad o autorización podían dejar una orden inválida como lista | Vuelta automática a revisión y actualización del espejo |
 | Dinero | Fecha del equipo podía confundirse con fecha de cobro | Ledger separado, fecha confirmada y apertura sin fecha ficticia |
 | Dependencias | SDK antiguo y versiones transitivas afectadas | Firebase 12.19.0, gRPC 1.14.5 y undici 6.29.0; quedan alertas de herramientas |
+| Node 20 / CI | Una prueba comprobaba el PIN antes de terminar la entrega asíncrona | Reproducido en Node 20.19, espera por estado observable y nueva matriz aprobada |
+| Inventario / reglas | El servicio comprobaba autorización, pero las reglas de stock no ofrecían la misma protección | Autorización previa, deltas exactos, reserva/evento/lote vinculados; pruebas adversarias y flujo reserva/consumo/liberación en emulador |
 | Entorno de navegador | No se podía descargar Chromium por los hosts habituales y faltaban librerías | Binario y librerías temporales fuera del repo; se ejecutaron las 8 pruebas reales |
 
 El LOOP no es un proceso infinito en segundo plano ni un script que modifica código
@@ -97,33 +102,41 @@ Los flujos autenticados usan un doble de Firebase **dentro de un navegador real*
 no una conexión al proyecto productivo. La prueba del SDK real bloquea APIs externas.
 El contraste de una ficha no equivale a una auditoría WCAG completa de toda la app.
 
-## Bloqueo del emulador y protección del despliegue
+## Emulador y CI: bloqueo local resuelto mediante GitHub Actions
 
-Se intentó `npm run test:rules`. Falló antes de levantar Firestore:
+El intento local de `npm run test:rules` falló antes de levantar Firestore:
+`Could not spawn java -version`. No había Java y las descargas necesarias estaban
+restringidas. No se sustituyó el emulador por un mock ni se probó contra producción.
 
-```
-Could not spawn `java -version`.
-Please make sure Java is installed and on your system PATH.
-```
+Se subieron los cambios **solo a la rama de trabajo** y se ejecutó el CI con Java 21.
+El primer ciclo aprobó emulador/navegador, pero falló una prueba en Node 20.19.
+Se reprodujo localmente y se corrigió una espera temporal: ahora la prueba espera
+el estado de entrega confirmado. El segundo ciclo aprobó toda la matriz.
 
-No había Java instalado. La descarga desde repositorios del sistema y desde el host
-del emulador no estaba disponible en este entorno. No se reemplazó esa prueba por
-un falso resultado correcto ni se omitió silenciosamente del comando completo.
+Una revisión adicional reforzó las reglas de inventario y agregó dos escenarios
+adversarios. El tercer ciclo volvió a aprobar la matriz, las reglas y el navegador:
 
-Se incorporó `tests/emulator/seguridad.test.mjs` para comprobar:
+- [CI completo del código final (commit `df48d3c`)](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311).
+- Node 20.19 y Node 22: lint, auditoría estática y 136 pruebas por ejecución.
+- Integración: 8 pruebas de emulador y 8 de Chromium, todas aprobadas.
+- No hubo integración en `main`, despliegue ni migración de datos reales.
 
-- lectura propia, ajena, anónima y rechazo del listado público;
-- montos inválidos, suplantación y escrituras sin evento/revisión;
-- creación atómica de correlativo, cliente y espejo público;
-- pago, reverso y diario inmutable;
-- procedimiento legado, conflicto y orden entregada;
-- competencia por la última unidad de stock.
+Los ocho escenarios del emulador usan los módulos de dominio/servicio reales:
+
+1. Lectura propia, ajena, anónima y rechazo del listado público.
+2. Montos inválidos, suplantación y escrituras sin evento/revisión.
+3. Creación atómica de correlativo, cliente y espejo público.
+4. Pago, reverso y diario inmutable.
+5. Procedimiento legado, conflicto y orden entregada.
+6. Competencia por la última unidad de stock.
+7. Reserva no autorizada rechazada, incluso mediante escritura directa.
+8. Lote y cantidades falsos rechazados; reserva, consumo y liberación legítimos;
+   rechazo de reutilización de un evento anterior.
 
 `.github/workflows/verificacion.yml` instala Java 21 y Chromium en el runner y
-exige la ejecución real de estas capas. Los despliegues dependen de ese workflow.
-**Aún no se ha ejecutado ni confirmado un resultado de CI para esta revisión.**
-Si allí aparece un error de compilación de reglas, permisos, índice o transacción,
-debe corregirse y repetirse la suite; no publicar saltándose el requisito.
+exige estas capas. Los despliegues dependen de ese workflow. Las acciones de
+checkout, Node y Java se actualizaron tras los avisos de deprecación del primer CI.
+El emulador no sustituye pruebas de Auth/persistencia/índices en un proyecto de staging.
 
 Al integrar en `main`, el workflow está preparado para publicar reglas/índices
 antes del hosting, usando la cuenta de servicio existente. Necesita permisos
@@ -148,7 +161,7 @@ cadena de herramientas de Firebase CLI, con causas en `braces`, `basic-ftp`,
 
 | Pendiente | Situación real / siguiente validación |
 |---|---|
-| Firestore real y emulador | Código/pruebas preparados, ejecución local bloqueada. Es requisito de publicación |
+| Firebase real / staging | Emulador aprobado en CI; pendientes Auth real, persistencia, índices y datos legados en staging |
 | Storage y retención | No implementados. Fotos/firmas conservan el formato actual; no hubo migración ni pérdida de datos |
 | Aprobación externa por enlace | No implementada. Hoy hay registro manual por versión con evidencia del técnico |
 | Compras, ajustes y devoluciones de stock | No implementados. Existen lotes recibidos, reserva, consumo y liberación |

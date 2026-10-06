@@ -8,9 +8,9 @@ HTML/CSS/JavaScript modular sin bundler + Firebase Auth, Firestore y Hosting.
 - [Mapa de trabajo y estado real](MAPA-DE-TRABAJO.md)
 - [Resultados del ciclo de validación y pendientes](VALIDACION.md)
 
-> Esta revisión no se ha desplegado a producción. No confundir las pruebas locales
-> con una certificación del Firebase real: la ejecución del emulador quedó bloqueada
-> por el entorno. El CI ahora exige esa prueba antes de publicar.
+> Esta revisión no se ha desplegado a producción. El CI aprobó las pruebas en
+> Node 20.19/22, el emulador de Firestore y Chromium. No equivale a validar el
+> proyecto productivo: todavía falta staging con Auth y datos legados.
 
 ## Funciones disponibles en código
 
@@ -94,7 +94,9 @@ ni un proceso de servidor programado**. Puede generar lecturas facturables.
   escrituras pendientes, error y confirmación del servidor para la consulta de órdenes.
 - Las reglas nuevas validan transiciones, revisión, pertenencia y relación entre
   espejo público y orden; diario inmutable, pagos con reversos y rutas privadas.
-  Su ejecución real debe pasar por el emulador/CI antes del despliegue.
+  Las 8 pruebas del emulador pasaron en CI; incluyen competencia de stock y
+  escrituras directas maliciosas. Los movimientos exigen autorización, deltas
+  exactos y reserva vinculada a orden/evento/lote.
 - Se bloqueó la migración de adopción de órdenes sin dueño desde la consola del
   navegador. No asignar propiedad histórica sin respaldo y verificación administrativa.
 - Nuevas órdenes y órdenes con operaciones auditadas no se borran físicamente.
@@ -144,7 +146,7 @@ Recomendado: **Node 22**, Java 21 para emuladores.
 npm ci
 npm run serve            # 0.0.0.0:8080; en otra terminal
 npm run check            # lint + auditoría estática + 136 pruebas locales
-npm run test:rules       # Java 21; proyecto demo-kryofix, nunca producción
+npm run test:rules       # 8 pruebas; Java 21; demo-kryofix, nunca producción
 npx playwright install --with-deps chromium
 npm run test:browser     # con servidor local abierto; 8 pruebas de navegador
 npm run check:full       # todas las anteriores; falla si cualquier capa falla
@@ -179,8 +181,8 @@ QR ni claves locales. Se mantienen APIs internas `TechFix*` por compatibilidad.
 
 ## Pendiente para cerrar todo el mapa
 
-1. Ejecutar y corregir, si corresponde, la suite real del emulador y validar Auth,
-   persistencia, dos sesiones y las reglas desplegadas en staging.
+1. Validar Auth, persistencia, dos sesiones y reglas desplegadas en staging con
+   datos legados. El emulador ya pasó en CI, pero no sustituye esta validación.
 2. Migración de fotos/firmas a Storage con respaldo, verificación y retención.
 3. Aprobación pública por enlace protegido: hoy solo hay registro manual verificable
    por el técnico, ligado a una versión de presupuesto.
