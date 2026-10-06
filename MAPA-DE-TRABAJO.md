@@ -377,3 +377,10 @@ No declarar puesta en marcha completa: faltan configuración/staging, proveedor,
 pruebas en hardware físico y tratamiento de avisos de herramientas. La matriz de
 navegadores pasó 75 ejecuciones y 30 repeticiones adicionales de WebKit; no se sustituye una prueba real de cámara, teclado,
 impresión o restauración de respaldos por una pantalla emulada.
+
+
+### Decisión para el cierre externo
+
+Sin proveedor de mensajes por ahora; envíos apagados. Preparar staging nuevo,
+con workflow manual y validaciones de aislamiento. Guía: STAGING.md. No se creó
+ningún proyecto cloud ni se habilitó facturación. Suite local: 172 pruebas.

@@ -147,3 +147,18 @@ npm audit --prefix functions
 `npm run check:full` enlaza las capas de pruebas. Secretos de emuladores, resultados,
 binarios de navegador y dependencias no se versionan. No se pidieron contraseñas,
 tokens o cuentas de servicio en el chat.
+
+
+## Preparación posterior de staging (decisión del propietario)
+
+Se eligió **sin proveedor por ahora** y **preparar un staging nuevo**. Se añadió
+workflow manual aislado y controles para rechazar producción, bucket/dominio ajeno,
+configuración privada en la web, cuenta de servicio incorrecta y envíos activos.
+
+- Suite local actual: **172 pruebas aprobadas** (12 nuevas de configuración segura).
+- La configuración externa/despliegue **no se ejecutó**: falta autenticación de
+  Firebase; las variables de Actions no son accesibles a esta integración.
+- `STAGING.md` detalla creación por el propietario y configuración segura. No se
+  solicita ningún secreto en chat ni se reutiliza la cuenta productiva.
+- El workflow nuevo no se presenta como ejecutado; requiere proyecto/secretos y
+  disponibilidad de `workflow_dispatch` en la rama predeterminada.

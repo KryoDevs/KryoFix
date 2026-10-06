@@ -8,6 +8,7 @@ HTML/CSS/JavaScript modular sin bundler + Firebase Auth, Firestore y Hosting.
 - [Mapa de trabajo y estado real](MAPA-DE-TRABAJO.md)
 - [Resultados del ciclo de validación y pendientes](VALIDACION.md)
 - [Configuración, proveedor y puesta en marcha segura](DESPLIEGUE.md)
+- [Preparación de staging sin proveedor de mensajes](STAGING.md)
 
 > Esta revisión no se ha desplegado a producción. El CI aprobó las pruebas en
 > Node 20.19/22, el emulador de Firestore y Chromium. No equivale a validar el
@@ -165,7 +166,7 @@ Recomendado: **Node 22**, Java 21 para emuladores.
 ```bash
 npm ci
 npm run serve            # 0.0.0.0:8080; en otra terminal
-npm run check            # lint + auditoría estática + 160 pruebas locales
+npm run check            # lint + auditoría estática + 172 pruebas locales
 npm run test:rules       # 10 pruebas; Java 21; demo-kryofix, nunca producción
 npx playwright install --with-deps chromium webkit
 npm run test:backend     # 4 escenarios API/Auth/Storage; requiere npm ci --prefix functions
