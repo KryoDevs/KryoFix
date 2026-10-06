@@ -1,0 +1,11 @@
+import { writeFileSync, readFileSync } from 'node:fs';
+const config = JSON.parse(process.env.FIREBASE_WEB_CONFIG || 'null');
+const permitidas = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'];
+if (!config || Object.keys(config).some(k => !permitidas.includes(k)) || ['apiKey', 'authDomain', 'projectId', 'appId'].some(k => typeof config[k] !== 'string' || !config[k])) throw new Error('Se requiere configuración WEB pública de Firebase; nunca una cuenta de servicio.');
+if (!/^[a-z0-9.-]+$/.test(config.authDomain)) throw new Error('authDomain inválido.');
+if (process.env.ENTORNO_STAGING === 'true' && config.projectId === 'techfix-tracker-9a128') throw new Error('Staging no puede apuntar al proyecto productivo.');
+writeFileSync('app/entorno.js', '/* Configuración WEB pública generada para este despliegue. */\nwindow.KryoFixEntorno = ' + JSON.stringify({ firebase: config }) + ';\n');
+const firebase = JSON.parse(readFileSync('firebase.json', 'utf8'));
+for (const regla of firebase.hosting.headers) for (const h of regla.headers) if (h.key === 'Content-Security-Policy') h.value = h.value.replace(/frame-src [^;]+/, 'frame-src https://' + config.authDomain);
+writeFileSync('firebase.json', JSON.stringify(firebase, null, 2) + '\n');
+console.log('Configuración pública preparada; no se desplegó ningún recurso.');

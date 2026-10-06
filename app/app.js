@@ -20,7 +20,7 @@
     // CONFIGURACION DE FIREBASE
     // (la apiKey web no es un secreto: la proteccion real son firestore.rules)
     // ========================
-    const firebaseConfig = {
+    const firebaseConfig = window.KryoFixEntorno?.firebase || {
         apiKey: 'AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8',
         authDomain: 'techfix-tracker-9a128.firebaseapp.com',
         projectId: 'techfix-tracker-9a128',
@@ -168,6 +168,9 @@
     let clienteSeleccionadoId = null;
     let ingresoPendienteId = null;
     let firmaTieneTrazos = false;
+    let isDrawing = false;
+    let punteroFirma = null;
+    let solicitudFirma = 0;
     let ultimoFoco = null;
     let filtroCatalogo = '';
     const pinesVisibles = new Set();
@@ -1633,6 +1636,7 @@
         $('chk-saldar-entrega').checked = false;
         $('excepcion-entrega').value = '';
         currentFirmaId = id;
+        solicitudFirma++;
         firmaBaseRevision = p.revisionOrden || 0;
         firmaTieneTrazos = false;
         // El canvas se dimensiona DESPUES de mostrar el modal: mientras esta
@@ -1870,6 +1874,7 @@
 
     /** Ajusta el buffer del canvas al tamano real en pantalla (y a la densidad). */
     function prepararCanvas() {
+        isDrawing = false; punteroFirma = null;
         if (!canvas || !ctx) return;
         const r = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -1901,7 +1906,6 @@
         return { x: (punto.clientX - r.left) * escalaX, y: (punto.clientY - r.top) * escalaY };
     }
 
-    let isDrawing = false;
     function startDrawing(e) {
         if (!ctx) return;
         isDrawing = true;
@@ -1924,14 +1928,16 @@
 
     if (canvas && window.PointerEvent) {
         canvas.addEventListener('pointerdown', e => {
-            if (e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            if (punteroFirma !== null || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            punteroFirma = e.pointerId;
             startDrawing(e);
             try { canvas.setPointerCapture(e.pointerId); } catch (_e) { /* Evento sintético o puntero ya liberado. */ }
         });
-        canvas.addEventListener('pointermove', draw);
-        canvas.addEventListener('pointerup', stopDrawing);
-        canvas.addEventListener('pointercancel', stopDrawing);
-        canvas.addEventListener('lostpointercapture', stopDrawing);
+        canvas.addEventListener('pointermove', e => { if (e.pointerId === punteroFirma) draw(e); });
+        const terminar = e => { if (e.pointerId === punteroFirma) { stopDrawing(); punteroFirma = null; } };
+        canvas.addEventListener('pointerup', terminar);
+        canvas.addEventListener('pointercancel', terminar);
+        canvas.addEventListener('lostpointercapture', terminar);
     } else if (canvas) {
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
@@ -1961,6 +1967,10 @@
     }
 
     function cerrarModalFirma() {
+        solicitudFirma++;
+        const guardar = $('btn-guardar-firma');
+        if (guardar) { guardar.disabled = false; guardar.textContent = 'Confirmar y entregar'; }
+        isDrawing = false; punteroFirma = null;
         modalFirma.style.display = 'none';
         modalFirma.setAttribute('aria-hidden', 'true');
         currentFirmaId = null;
@@ -1984,6 +1994,7 @@
     });
 
     escuchar('btn-limpiar-firma', 'click', () => {
+        isDrawing = false; punteroFirma = null;
         if (ctx) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2007,7 +2018,7 @@
         }
         const equipoActual = proyectos.find((x) => x.id === currentFirmaId);
         if (!equipoActual || !currentUser) return;
-        const uidFirma = currentUser.uid, sesionFirma = epocaSesion;
+        const uidFirma = currentUser.uid, sesionFirma = epocaSesion, solicitudEnviada = solicitudFirma;
         const etiqueta = btn.textContent;
         btn.textContent = 'Guardando...';
         btn.disabled = true;
@@ -2028,14 +2039,14 @@
                     firma: dataUrl, saldar: $('chk-saldar-entrega').checked,
                     excepcion: $('excepcion-entrega').value.trim()
                 } });
-            if (currentUser?.uid !== uidFirma || epocaSesion !== sesionFirma) return;
+            if (currentUser?.uid !== uidFirma || epocaSesion !== sesionFirma || solicitudFirma !== solicitudEnviada) return;
             cerrarModalFirma();
             toast('success', 'Equipo entregado con firma');
             migrarArchivoNuevo(idFirmado, 'firmaCliente', uidFirma, sesionFirma);
         } catch (err) {
-            if (currentUser?.uid === uidFirma && epocaSesion === sesionFirma) avisarError('No se pudo guardar la firma', err);
+            if (currentUser?.uid === uidFirma && epocaSesion === sesionFirma && solicitudFirma === solicitudEnviada) avisarError('No se pudo guardar la firma', err);
         } finally {
-            if (epocaSesion === sesionFirma) { btn.textContent = etiqueta; btn.disabled = false; }
+            if (epocaSesion === sesionFirma && solicitudFirma === solicitudEnviada) { btn.textContent = etiqueta; btn.disabled = false; }
         }
     });
 

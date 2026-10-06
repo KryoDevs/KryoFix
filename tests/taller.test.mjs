@@ -238,3 +238,34 @@ test('compresión de una foto iniciada antes de salir no repuebla evidencia priv
     assert.equal(c.document.getElementById('preview-foto').style.display, 'none');
     assert.equal(c.document.getElementById('img-evidencia-preview').getAttribute('src'), '');
 });
+
+test('firma ignora un segundo dedo y deja de dibujar después de limpiar', async t => {
+    const c = await iniciar(t);
+    c.window.TechFix.archivarProyecto('a');
+    const canvas = c.document.getElementById('canvas-firma');
+    const enviar = (tipo, id, primaria = true) => canvas.dispatchEvent(new c.window.PointerEvent(tipo, { pointerType: 'touch', pointerId: id, isPrimary: primaria, clientX: 10, clientY: 10 }));
+    enviar('pointerdown', 1); const antes = c.trazos.length;
+    enviar('pointermove', 2, false); assert.equal(c.trazos.length, antes);
+    enviar('pointerup', 2, false); enviar('pointermove', 1); assert.ok(c.trazos.length > antes);
+    c.document.getElementById('btn-limpiar-firma').click(); const limpio = c.trazos.length;
+    enviar('pointermove', 1); assert.equal(c.trazos.length, limpio);
+    c.document.getElementById('btn-guardar-firma').click();
+    assert.equal(c.swal.llamadas.at(-1).title, 'Falta la firma');
+});
+
+test('entrega tardía no cierra el modal de firma de otra orden', async t => {
+    const c = await iniciar(t);
+    await c.db.collection('equipos').doc('b').set({ ...base, cliente: 'Otra orden' });
+    let terminar;
+    c.servicio.ejecutar = () => new Promise(r => { terminar = r; });
+    c.window.TechFix.archivarProyecto('a');
+    const canvas = c.document.getElementById('canvas-firma');
+    for (const tipo of ['pointerdown', 'pointermove']) canvas.dispatchEvent(new c.window.PointerEvent(tipo, { isPrimary: true, pointerId: 1, clientX: 10, clientY: 20 }));
+    c.document.getElementById('btn-guardar-firma').click();
+    c.document.getElementById('btn-cancelar-firma').click();
+    c.window.TechFix.archivarProyecto('b');
+    terminar(); await tick();
+    assert.equal(c.document.getElementById('modal-firma').style.display, 'flex');
+    assert.match(c.document.getElementById('resumen-entrega-firma').textContent, /Otra orden/);
+    assert.equal(c.document.getElementById('btn-guardar-firma').disabled, false);
+});

@@ -208,7 +208,7 @@ test('firma táctil/lápiz conserva trazos al rotar y confirma entrega', async (
     const antes = await canvas.evaluate(c => c.toDataURL());
     const v = page.viewportSize(); await page.setViewportSize({ width: v.height, height: v.width });
     expect(await canvas.evaluate(c => c.toDataURL())).toBe(antes);
-    await page.getByRole('button', { name: /Guardar.*Entrega|Guardar.*firma|Confirmar entrega/i }).click();
+    await page.getByRole('button', { name: 'Confirmar y entregar', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__db._datos.get('equipos').get('a').estado)).toBe('entregado');
     expect(errores).toEqual([]);
 });
@@ -240,4 +240,22 @@ test('página de aprobación muestra texto seguro y confirma decisión sin login
     await page.getByLabel('Tu nombre').fill('Cliente de prueba'); await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Aprobar presupuesto', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Decisión confirmada: aprobado'); expect(decisiones).toBe(1);
+});
+
+test('selección de fotografía comprime y previsualiza evidencia sin desbordar', async ({ page }) => {
+    await preparar(page);
+    const captura = page.locator('#foto-evidencia');
+    await expect(captura).toHaveAttribute('capture', 'environment');
+    await captura.setInputFiles({ name: 'evidencia.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64') });
+    await expect(page.locator('#img-evidencia-preview')).toBeVisible();
+    await expect(page.locator('#img-evidencia-preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+test('enlace inválido no muestra formulario ni consulta el backend', async ({ page }) => {
+    let solicitudes = 0;
+    await page.route('**/api/aprobacion', route => { solicitudes++; return route.abort(); });
+    await page.goto('/aprobacion.html#invalido');
+    await expect(page.getByRole('status')).toContainText('Enlace incompleto o inválido');
+    await expect(page.locator('#decision-presupuesto')).toBeHidden(); expect(solicitudes).toBe(0);
 });

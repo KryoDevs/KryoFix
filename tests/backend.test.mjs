@@ -99,3 +99,20 @@ test('métricas separan saldo y pagos por mes de Santiago, sin inventar cobros d
     const r = resumen([{ costo: 10000, abono: 4000, estado: 'reparado' }], [{ monto: 4000 }, { monto: 2000, confirmado: ahora }, { monto: -1000, confirmado: ahora }], ahora);
     assert.equal(r.saldo, 6000); assert.equal(r.netoMes, 1000); assert.equal(r.activas, 1); assert.equal(r.periodo, '2026-10');
 });
+
+test('no emite enlaces con totales inconsistentes ni saldo superior al presupuesto', async () => {
+    const a = entorno({ presupuesto: { ...presupuesto, total: 1 } });
+    await assert.rejects(a.b.emitirEnlace('ana', 'a'), { status: 409 });
+    const b = entorno({ costo: 1 }); await assert.rejects(b.b.emitirEnlace('ana', 'a'), { status: 409 });
+    const c = entorno({ abono: 15000 }); await assert.rejects(c.b.emitirEnlace('ana', 'a'), { status: 409 });
+});
+
+test('no se extiende retención ni reemplaza un archivo mientras se está eliminando', async () => {
+    const c = entorno({ evidencia: png });
+    await c.b.migrarArchivo('ana', 'a', 'evidencia');
+    await c.db.collection('equipos').doc('a').update({ evidencia: png, archivos: { evidencia: { ...c.p().archivos.evidencia, eliminando: true } } });
+    await assert.rejects(c.b.retencion('ana', 'a', 365, true), { status: 409 });
+    await assert.rejects(c.b.migrarArchivo('ana', 'a', 'evidencia'), { status: 409 });
+    assert.equal(c.p().evidencia, png);
+    await assert.rejects(c.b.leerArchivo('ana', 'a', 'evidencia'), { status: 404 });
+});

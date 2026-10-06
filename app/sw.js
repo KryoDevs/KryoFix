@@ -12,7 +12,7 @@
  *   - Firestore / Auth / APIs: NUNCA se interceptan.
  * ========================================================================== */
 
-const VERSION = 'v15';
+const VERSION = 'v16';
 const CACHE_APP = `techfix-app-${VERSION}`;
 const CACHE_VENDOR = `techfix-vendor-${VERSION}`;
 const CACHES_VIGENTES = [CACHE_APP, CACHE_VENDOR];
@@ -26,6 +26,7 @@ const RECURSOS_APP = [
     './aprobacion.js',
     './estilos.css',
     './tema.js',
+    './entorno.js',
     './dominio.js',
     './app.js',
     './borradores.js',

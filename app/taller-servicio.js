@@ -139,12 +139,16 @@
                 variante: D().texto(datos.variante, 100), proveedor: D().texto(datos.proveedor, 120), costo: D().dinero(datos.costo),
                 disponible: D().cantidad(datos.cantidad), reservado: 0, creado: timestampServidor() };
             if (!r.nombre || !r.marca || !r.modelo) throw error('datos-invalidos', 'Completa nombre, marca y modelo del repuesto.');
+            r.huella = await huella({ ...r, creado: undefined });
             const ref = privada(uid, 'repuestos').doc(opId);
             await db.runTransaction(async tx => {
                 sesion(uid);
                 const previo = await tx.get(ref);
                 sesion(uid);
-                if (previo.exists) return; // mismo lote de compra: reintento idempotente
+                if (previo.exists) {
+                    if (previo.data().huella !== r.huella) throw error('id-reutilizado', 'El identificador corresponde a un lote con otros datos.');
+                    return;
+                }
                 tx.set(ref, r);
             });
         }

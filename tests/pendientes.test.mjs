@@ -54,3 +54,10 @@ test('garantía crea orden vinculada, correlativo único y no copia dinero ni fi
     await s.ejecutar({ uid: 'ana', id: 'original', revision: 1, opId: 'cerrar', accion: 'garantia', datos: { motivo: 'Falla de pantalla recurrente', estado: 'cerrada', resultado: 'Reparada y probada' } });
     assert.equal((await s.leerOrden('ana', 'original')).garantia.ordenRetrabajo, 'hija');
 });
+
+test('reintento de lote no acepta cambiar silenciosamente las cantidades', async t => {
+    const { s } = iniciar(t);
+    await s.guardarRepuesto('ana', compra, 'lote');
+    await s.guardarRepuesto('ana', compra, 'lote');
+    await assert.rejects(s.guardarRepuesto('ana', { ...compra, cantidad: 9 }, 'lote'), { code: 'id-reutilizado' });
+});

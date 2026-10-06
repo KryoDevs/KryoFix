@@ -13,6 +13,10 @@ const foto = valor => {
 };
 export function presupuestoPublico(p) {
     if (!p || !Number.isInteger(p.version) || !Array.isArray(p.lineas) || p.lineas.length > 20) fallo(409, 'No hay presupuesto válido.');
+    if (!p.lineas.length || !Number.isSafeInteger(p.total) || p.total < 0 || p.total > 100000000 ||
+        p.lineas.some(l => typeof l.concepto !== 'string' || !l.concepto.trim() || l.concepto.length > 120 || !Number.isInteger(l.cantidad) || l.cantidad < 1 || l.cantidad > 10000 || !Number.isSafeInteger(l.precio) || l.precio < 0 || l.precio > 100000000) ||
+        p.lineas.reduce((n, l) => n + l.cantidad * l.precio, 0) !== p.total ||
+        (p.condiciones !== undefined && typeof p.condiciones !== 'string') || (p.plazo !== undefined && typeof p.plazo !== 'string')) fallo(409, 'El desglose del presupuesto es inconsistente.');
     return { version: p.version, total: p.total, lineas: p.lineas.map(l => ({ concepto: l.concepto, cantidad: l.cantidad, precio: l.precio })), condiciones: p.condiciones || '', plazo: p.plazo || '' };
 }
 export function resumen(ordenes, pagos, ahora = Date.now()) {
@@ -43,6 +47,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             const { p } = await propia(uid, id, tx);
             if (p.estado === 'entregado' || p.presupuesto?.autorizacion.estado !== 'pendiente') fallo(409, 'Se requiere un presupuesto pendiente de una orden activa.');
             const presupuesto = presupuestoPublico(p.presupuesto);
+            if (p.costo !== presupuesto.total || Number(p.abono || 0) > presupuesto.total) fallo(409, 'El presupuesto no coincide con las finanzas de la orden.');
             tx.set(doc('aprobacionesPrivadas', digest), { uid, ordenId: id, presupuesto, expira, usado: false, creado: stamp() });
             evento(tx, uid, id, p, digest, 'enlace', { resumen: 'Enlace de aprobación emitido; invalida enlaces anteriores' }, { aprobacionActiva: digest });
         });
@@ -56,7 +61,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             if (!enlace.exists) fallo(404, 'Enlace no disponible.');
             const e = enlace.data(), { p } = await propia(e.uid, e.ordenId, tx);
             if (e.expira <= ahora() || p.aprobacionActiva !== digest || p.estado === 'entregado' ||
-                JSON.stringify(presupuestoPublico(p.presupuesto)) !== JSON.stringify(e.presupuesto)) fallo(410, 'El enlace venció o cambió el presupuesto. Solicita uno nuevo.');
+                p.costo !== e.presupuesto.total || JSON.stringify(presupuestoPublico(p.presupuesto)) !== JSON.stringify(e.presupuesto)) fallo(410, 'El enlace venció o cambió el presupuesto. Solicita uno nuevo.');
             if (e.usado) {
                 if (decision === e.decision && texto(nombre, 120) === e.nombre) return { confirmado: true, decision: e.decision };
                 fallo(409, 'Este enlace ya fue utilizado.');
@@ -70,6 +75,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             const parche = { presupuesto };
             if (p.estado === 'reparado' && decision === 'rechazado') {
                 parche.estado = 'revision';
+                parche.historial = [...(p.historial || []), { estado: 'revision', en: ahora(), por: 'cliente-enlace' }];
                 tx.set(doc('seguimiento', e.ordenId), { uid: e.uid, estado: 'revision', modelo: String(p.modelo || '').slice(0, 80), actualizado: stamp() });
             }
             evento(tx, e.uid, e.ordenId, p, digest + '-decision', 'autorizar', { resumen: 'Presupuesto v' + presupuesto.version + ' ' + decision + ' mediante enlace', presupuesto }, parche);
@@ -92,6 +98,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
         if (hash(verificado) !== imagen.sha256) fallo(500, 'No se verificó la copia; el original se conserva.');
         await db.runTransaction(async tx => {
             const { p: actual } = await propia(uid, id, tx);
+            if (actual.archivos?.[tipo]?.eliminando) fallo(409, 'El archivo anterior está en eliminación; el nuevo original se conserva.');
             if (!actual[tipo] && actual.archivos?.[tipo]?.sha256 === imagen.sha256) return;
             if (actual[tipo] !== p[tipo]) fallo(409, 'El archivo cambió; el original no fue eliminado.');
             evento(tx, uid, id, actual, randomBytes(16).toString('hex'), 'archivo', { resumen: 'Archivo privado verificado: ' + tipo },
@@ -103,7 +110,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
         if (!['evidencia', 'firmaCliente'].includes(tipo)) fallo(400, 'Tipo de archivo inválido.');
         const { p } = await propia(uid, id);
         const a = p.archivos?.[tipo];
-        if (!a || a.borrado || !bucket || !a.ruta.startsWith('privado/' + uid + '/' + id + '/' + tipo + '/')) fallo(404, 'Archivo no disponible.');
+        if (!a || a.borrado || a.eliminando || !bucket || !a.ruta.startsWith('privado/' + uid + '/' + id + '/' + tipo + '/')) fallo(404, 'Archivo no disponible.');
         const [bytes] = await bucket.file(a.ruta).download();
         if (hash(bytes) !== a.sha256) fallo(500, 'El archivo no supera la verificación de integridad.');
         return { dataUrl: 'data:image/' + a.tipo + ';base64,' + bytes.toString('base64') };
@@ -137,6 +144,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             await bucket.file(a.ruta).delete({ ignoreNotFound: true });
             await db.runTransaction(async tx => {
                 const { p: actual } = await propia(p.uid, id, tx);
+                if (actual.archivos?.[tipo]?.sha256 !== a.sha256 || !actual.archivos[tipo].eliminando) return;
                 evento(tx, p.uid, id, actual, randomBytes(16).toString('hex'), 'retencion', { resumen: 'Archivo eliminado por retención: ' + tipo },
                     { archivos: { ...actual.archivos, [tipo]: { ...actual.archivos[tipo], borrado: ahora(), eliminando: false } } });
             });

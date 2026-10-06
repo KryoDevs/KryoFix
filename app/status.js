@@ -41,7 +41,7 @@
         return;
     }
 
-    const firebaseConfig = {
+    const firebaseConfig = window.KryoFixEntorno?.firebase || {
         apiKey: 'AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8',
         authDomain: 'techfix-tracker-9a128.firebaseapp.com',
         projectId: 'techfix-tracker-9a128',
