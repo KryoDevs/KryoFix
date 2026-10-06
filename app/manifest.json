@@ -1,8 +1,8 @@
 {
     "id": "/",
-    "name": "TechFix Tracker Pro",
-    "short_name": "TechFix",
-    "description": "Sistema de gestión para servicio técnico de equipos y smartphones.",
+    "name": "KryoFix — Gestión de servicio técnico",
+    "short_name": "KryoFix",
+    "description": "Gestión de reparaciones y servicio técnico. Desarrollado por KryoDevs.",
     "lang": "es",
     "dir": "ltr",
     "start_url": "./index.html",

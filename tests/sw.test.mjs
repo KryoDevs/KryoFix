@@ -15,7 +15,7 @@ function montarWorker() {
     };
     runInNewContext(readFileSync(new URL('../app/sw.js', import.meta.url), 'utf8'), {
         self: { addEventListener: (nombre, fn) => { eventos[nombre] = fn; }, location: { origin: 'https://ejemplo.test' }, clients: { claim: async () => {} } },
-        caches: { open: async () => cache, keys: async () => ['techfix-app-v1', 'otra-app-v1', 'techfix-app-v7'], delete: async (n) => borradas.push(n) },
+        caches: { open: async () => cache, keys: async () => ['techfix-app-v1', 'otra-app-v1', 'techfix-app-v13'], delete: async (n) => borradas.push(n) },
         fetch: async () => { throw new Error('Offline'); }, URL, console
     });
     return { eventos, borradas, consultas };

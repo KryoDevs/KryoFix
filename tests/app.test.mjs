@@ -202,7 +202,7 @@ describe('Ticket, QR y numero de orden', () => {
         await tick(20);
 
         const guardado = [...db._datos.get('equipos').values()][0];
-        assert.match(guardado.idOrden, /^TF-\d{6}-\d{3}$/, `numero de orden inesperado: ${guardado.idOrden}`);
+        assert.match(guardado.idOrden, /^KRF-\d{6}$/, `numero de orden inesperado: ${guardado.idOrden}`);
 
         window.TechFix.imprimirBoleta([...db._datos.get('equipos').keys()][0]);
         assert.ok(
@@ -291,7 +291,7 @@ describe('Estados: transiciones y recordatorios', () => {
 
     test('el selector de la tarjeta deshabilita los estados no alcanzables', async () => {
         const { document } = await sesionIniciada({ equipos: { a: equipo({ estado: 'ingresado' }) } });
-        const select = document.querySelector('#lista-proyectos select');
+        const select = document.querySelector('#lista-proyectos select[data-accion="estado"]');
         assert.equal(select.querySelector('option[value="entregado"]').disabled, true);
         assert.equal(select.querySelector('option[value="reparado"]').disabled, false);
     });

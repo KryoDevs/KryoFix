@@ -90,6 +90,6 @@ test('KPI saldo accesible por teclado activa filtro y ordenamiento', (t) => {
     const card = document.querySelector('[data-filtro-kpi="saldo"]');
     assert.equal(card.tabIndex, 0);
     card.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    assert.equal(document.getElementById('filtro-estado').value, 'activos');
+    assert.equal(document.getElementById('filtro-estado').value, 'con-saldo');
     assert.equal(document.getElementById('ordenar-proyectos').value, 'saldo');
 });

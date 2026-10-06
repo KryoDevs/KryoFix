@@ -31,7 +31,7 @@ function resolverConstantes(src) {
     }
     return out;
 }
-const appJs = resolverConstantes(appJsCrudo);
+const appJs = resolverConstantes(appJsCrudo + '\n' + (read('app/ordenes-repositorio.js') ?? ''));
 const statusJs = read('app/status.js') ?? '';
 const swJs = read('app/sw.js') ?? '';
 const css = read('app/estilos.css') ?? '';

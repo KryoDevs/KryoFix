@@ -20,3 +20,10 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Resultados de pruebas de navegador
+/test-results/
+/playwright-report/
+
+# Credenciales temporales de GitHub Actions
+gha-creds-*.json

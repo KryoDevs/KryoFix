@@ -1,0 +1,156 @@
+import { test, expect } from '@playwright/test';
+import { crearFirestoreFalso, crearAuthFalso, aplicarSentinelas } from '../helpers/entorno.mjs';
+
+const base = { uid: 'tecnico', cliente: 'Cliente de prueba', telefono: '56912345678', equipo: 'Apple', modelo: 'iPhone 13',
+    estado: 'ingresado', costo: 50000, abono: 0, timestamp: 1, schemaVersion: 2, revisionOrden: 0, idOrden: 'KRF-000001' };
+async function preparar(page) {
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    await page.route('**/vendor/firebase-*.js', route => route.fulfill({ body: '', contentType: 'application/javascript' }));
+    await page.addInitScript({ content: `
+        ${aplicarSentinelas.toString()}
+        ${crearFirestoreFalso.toString()}
+        ${crearAuthFalso.toString()}
+        window.__db = crearFirestoreFalso({ equipos: { a: ${JSON.stringify(base)}, b: ${JSON.stringify({ ...base, timestamp: 2, cliente: 'Segundo cliente' })} } });
+        window.__auth = crearAuthFalso();
+        const firestore = () => window.__db;
+        firestore.FieldValue = window.__db.FieldValue;
+        window.firebase = { initializeApp: () => ({}), firestore, auth: () => window.__auth };
+        window.__auth._entrar({ uid: 'tecnico', email: 'tecnico@example.test' });
+    ` });
+    await page.goto('/');
+    await expect(page.locator('#app-content')).toBeVisible();
+    return errores;
+}
+async function ficha(page, seccion) {
+    await page.locator('[data-id="a"] [data-accion="ficha"]').click();
+    const d = page.getByRole('dialog', { name: /KRF-000001/ });
+    await expect(d).toBeVisible();
+    if (seccion) await d.getByRole('button', { name: seccion, exact: true }).click();
+    return d;
+}
+
+test('ficha de diagnóstico guarda datos en navegador real y navega sin errores JS', async ({ page }) => {
+    const errores = await preparar(page);
+    const d = await ficha(page, 'Diagnóstico');
+    await d.locator('[name="riesgo"]').selectOption('si');
+    await expect(d.locator('.ficha-form .ficha-aviso')).toContainText('no cargar');
+    await d.locator('[name="riesgo"]').selectOption('no');
+    await d.locator('[name="sintoma"]').selectOption('carga');
+    await d.locator('[name="cable"]').selectOption('correcto');
+    await d.locator('[name="causa"]').fill('Conector inspeccionado: terminal dañado');
+    await d.getByRole('button', { name: 'Guardar diagnóstico', exact: true }).click();
+    await expect(d.locator('[name="causa"]')).toHaveValue('Conector inspeccionado: terminal dañado');
+    await expect(d.locator('.ficha-cabecera + p')).toContainText('Revisión 1');
+    await d.getByRole('button', { name: 'Cerrar ficha' }).click();
+    await expect(d).not.toBeVisible();
+    expect(errores).toEqual([]);
+});
+
+test('flujo presupuesto → autorización → pago → reverso conserva trazabilidad', async ({ page }) => {
+    const errores = await preparar(page);
+    const d = await ficha(page, 'Presupuesto');
+    await d.locator('[name="concepto0"]').fill('Pantalla compatible');
+    await d.locator('[name="precio0"]').fill('50000');
+    await d.getByRole('button', { name: 'Guardar nueva versión', exact: false }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('Versión 1 · pendiente');
+    await d.locator('[name="evidencia"]').fill('Cliente confirmó presencialmente el presupuesto completo');
+    await d.getByRole('button', { name: 'Registrar decisión del cliente' }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('Versión 1 · aprobado');
+    await d.getByRole('button', { name: 'Pagos', exact: true }).click();
+    await d.locator('[name="monto"]').fill('12000');
+    await d.getByRole('button', { name: 'Registrar pago recibido' }).click();
+    await expect(d.locator('.ficha-lista')).toContainText('12.000');
+    await d.locator('form').filter({ hasText: 'Registrar reverso' }).locator('[name="motivo"]').fill('Se devuelve pago por cambio de alcance');
+    await d.getByRole('button', { name: 'Registrar reverso', exact: false }).click();
+    await expect(d.locator('.ficha-lista')).toContainText('Revertido');
+    const abono = await page.evaluate(() => window.__db._datos.get('equipos').get('a').abono);
+    expect(abono).toBe(0);
+    expect(errores).toEqual([]);
+});
+
+test('navegación de teclado y móvil no desborda; conserva un formulario si se cancela descarte', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await preparar(page);
+    const d = await ficha(page, 'Diagnóstico');
+    await d.locator('[name="pruebas"]').fill('Texto aún no guardado');
+    await d.getByRole('button', { name: 'Calidad', exact: true }).click();
+    await page.getByRole('button', { name: 'Volver', exact: true }).click();
+    await expect(d.locator('[name="pruebas"]')).toHaveValue('Texto aún no guardado');
+    expect(await d.evaluate(n => n.scrollWidth <= n.clientWidth + 1)).toBe(true);
+    await d.locator('[name="pruebas"]').focus();
+    await page.keyboard.press('Tab');
+    expect(await d.evaluate(n => n.contains(document.activeElement))).toBe(true);
+});
+
+test('borrador del procedimiento conserva pasos al llegar un cambio ajeno y detecta conflicto', async ({ page }) => {
+    await preparar(page);
+    const tarjeta = page.locator('[data-id="a"]').first();
+    await tarjeta.locator('.procedimiento > summary').click();
+    await tarjeta.locator('.procedimiento input[type="checkbox"]').first().check();
+    await page.evaluate(() => window.__db.collection('equipos').doc('b').update({ notas: 'Otra sesión' }));
+    await expect(tarjeta.locator('.procedimiento input[type="checkbox"]').first()).toBeChecked();
+    await page.evaluate(() => window.__db.collection('equipos').doc('a').update({ procedimiento: window.TechFixDominio.crearProcedimiento('pantalla') }));
+    await expect(tarjeta.locator('.procedimiento [role="status"]')).toContainText('Conflicto');
+    await expect(tarjeta.getByRole('button', { name: 'Guardar procedimiento y avance' })).toBeDisabled();
+});
+
+test('gestión muestra inventario, agenda e informe completo', async ({ page }) => {
+    const errores = await preparar(page);
+    await page.getByRole('button', { name: 'Gestión del taller', exact: true }).click();
+    const d = page.getByRole('dialog', { name: 'Gestión del taller', exact: true });
+    await d.getByRole('button', { name: 'Inventario', exact: true }).click();
+    for (const [k, valor] of Object.entries({ nombre: 'Pantalla OLED', marca: 'Apple', modelo: 'iPhone 13', cantidad: '2', costo: '25000' })) await d.locator('[name="' + k + '"]').fill(valor);
+    await d.getByRole('button', { name: 'Registrar lote recibido' }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('disponible 2 / reservado 0');
+    await d.getByRole('button', { name: 'Informes', exact: true }).click();
+    await d.getByRole('button', { name: 'Consultar todas las órdenes y calcular' }).click();
+    await expect(d.locator('.ficha-cuerpo')).toContainText('Órdenes consultadas: 2');
+    expect(errores).toEqual([]);
+});
+
+test('plantilla privada se versiona y se aplica con confirmación explícita', async ({ page }) => {
+    await preparar(page);
+    await page.getByRole('button', { name: 'Gestión del taller', exact: true }).click();
+    const gestion = page.getByRole('dialog', { name: 'Gestión del taller', exact: true });
+    await gestion.getByRole('button', { name: 'Plantillas', exact: true }).click();
+    await gestion.locator('[name="titulo"]').fill('Revisión de carga del taller');
+    await gestion.locator('[name="pasos"]').fill('Descartar humedad y batería dañada\nConfirmar variante y registrar síntomas');
+    await gestion.getByRole('button', { name: 'Guardar versión de plantilla' }).click();
+    await expect(gestion.locator('[name="id"]')).toContainText('Revisión de carga del taller · v1');
+    await gestion.getByRole('button', { name: 'Cerrar ficha' }).click();
+    const d = await ficha(page, 'Procedimiento');
+    await d.locator('[name="confirmar"]').selectOption('si');
+    await d.getByRole('button', { name: 'Aplicar plantilla y reiniciar pasos' }).click();
+    await expect(d.locator('.procedimiento > summary')).toContainText('Revisión de carga del taller');
+});
+
+test('SDK Firebase empaquetado inicia el login sin credenciales ni escrituras reales', async ({ page }) => {
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    await page.route('**/*.googleapis.com/**', r => r.abort());
+    await page.goto('/');
+    await expect(page.locator('#login-screen')).toBeVisible();
+    await expect(page.locator('#login-screen h1')).toHaveText('KryoFix');
+    await expect.poll(() => page.evaluate(() => window.TechFix?.iniciada)).toBe(true);
+    expect(errores).toEqual([]);
+});
+
+test('la ficha en tema oscuro conserva contraste de texto y fondo', async ({ page }) => {
+    await preparar(page);
+    await page.locator('#btn-theme').click();
+    const d = await ficha(page, 'Diagnóstico');
+    const contraste = await d.evaluate(n => {
+        const css = getComputedStyle(n);
+        const luminancia = color => {
+            const c = color.match(/\d+/g).slice(0, 3).map(v => {
+                const x = Number(v) / 255;
+                return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+            });
+            return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+        };
+        const a = luminancia(css.color), b = luminancia(css.backgroundColor);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(contraste).toBeGreaterThan(4.5);
+});

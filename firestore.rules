@@ -36,12 +36,80 @@ service cloud.firestore {
       return request.resource.data.uid == resource.data.uid;
     }
 
+    function pruebaValida(valor, motivo) {
+      return valor == 'correcto' || (valor == 'no-aplica' && motivo is string && motivo.size() >= 5);
+    }
+    function calidadValida(d) {
+      let c = d.get('calidad', {});
+      let motivo = c.get('excepcion', '');
+      return pruebaValida(c.get('pantalla', ''), motivo)
+          && pruebaValida(c.get('carga', ''), motivo)
+          && pruebaValida(c.get('audio', ''), motivo)
+          && pruebaValida(c.get('camaras', ''), motivo)
+          && pruebaValida(c.get('conectividad', ''), motivo);
+    }
+    function autorizada(d) {
+      return ('presupuesto' in d)
+        ? (d.presupuesto.autorizacion.estado == 'aprobado' && d.presupuesto.autorizacion.version == d.presupuesto.version)
+        : d.get('costo', 0) == 0;
+    }
+    function entregaValida(antes, despues) {
+      return despues.firmaCliente is string && despues.firmaCliente.size() > 30 && despues.pin == ''
+        && (antes.get('schemaVersion', 1) < 2 || (
+          antes.estado == 'reparado' && calidadValida(despues)
+          && (despues.abono == despues.costo || despues.get('excepcionEntrega', '').size() >= 5)));
+    }
+    function estadoValido() {
+      let antes = resource.data;
+      let despues = request.resource.data;
+      let etapas = {'ingresado': 1, 'revision': 2, 'repuesto': 3, 'reparado': 4, 'entregado': 5};
+      let estado = despues.estado;
+      let correccion = estado == 'revision' && antes.estado == 'reparado'
+        && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(despues.ultimaOperacion)).data.accion
+          in ['calidad', 'diagnostico', 'presupuestar', 'autorizar'];
+      return estado in ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado']
+        && (antes.estado != 'entregado' ||
+            (estado == 'entregado' && despues.diff(antes).affectedKeys().hasOnly([
+              'abono', 'finanzas', 'garantia', 'ultimoContacto', 'revisionOrden', 'ultimaOperacion', 'actualizado'])))
+        && (estado != 'reparado' || antes.get('schemaVersion', 1) < 2 ||
+            (calidadValida(despues) && autorizada(despues) && despues.get('diagnostico', {}).get('riesgo', '') != 'si'))
+        && (estado == antes.estado || (
+            (etapas[estado] >= etapas.get(antes.estado, 1) - 1 || correccion)
+            && (estado != 'entregado' || entregaValida(antes, despues))));
+    }
+    function revisionValida(equipoId) {
+      let d = request.resource.data;
+      let antes = resource.data;
+      let soloGuia = d.diff(antes).affectedKeys().hasOnly(['procedimiento']);
+      return soloGuia ? (
+          antes.estado != 'entregado' && d.procedimiento is map
+          && d.procedimiento.pasos is list && d.procedimiento.pasos.size() <= 50
+          && d.procedimiento.tipo is string && d.procedimiento.titulo is string
+          && d.procedimiento.revision == antes.get('procedimiento', {}).get('revision', 0) + 1
+          && d.procedimiento.por == request.auth.uid && d.procedimiento.actualizado == request.time
+        ) : (
+          d.revisionOrden == antes.get('revisionOrden', 0) + 1
+          && d.actualizado == request.time && d.ultimaOperacion is string
+          && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(d.ultimaOperacion)).data.ordenId == equipoId
+          && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/eventos/$(d.ultimaOperacion)).data.revision == d.revisionOrden
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Ordenes de reparacion: estrictamente privadas por tecnico.
     // -------------------------------------------------------------------------
     match /equipos/{equipoId} {
       allow read:   if esDueno();
+      allow get: if autenticado() && !exists(/databases/$(database)/documents/equipos/$(equipoId));
       allow create: if seAutoAsigna()
+                    && request.resource.data.estado in ['ingresado', 'revision']
+                    && (request.resource.data.get('schemaVersion', 1) < 2 || (
+                        request.resource.data.revisionOrden == 0
+                        && request.resource.data.costo is int && request.resource.data.abono is int
+                        && request.resource.data.numeroOrden is int
+                        && getAfter(/databases/$(database)/documents/usuarios/$(request.auth.uid)/config/numeracion).data.numero == request.resource.data.numeroOrden
+                        && request.resource.data.numeroOrden == (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)/config/numeracion)
+                          ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)/config/numeracion).data.numero + 1 : 1)))
                     && request.resource.data.cliente is string
                     && request.resource.data.cliente.size() > 0
                     && request.resource.data.cliente.size() <= 120
@@ -51,6 +119,10 @@ service cloud.firestore {
                     && request.resource.data.abono >= 0
                     && request.resource.data.abono <= request.resource.data.costo;
       allow update: if esDueno() && seAutoAsigna() && mantieneDueno()
+                    && estadoValido() && revisionValida(equipoId)
+                    && request.resource.data.get('schemaVersion', 1) == resource.data.get('schemaVersion', 1)
+                    && request.resource.data.get('numeroOrden', 0) == resource.data.get('numeroOrden', 0)
+                    && request.resource.data.get('idOrden', '') == resource.data.get('idOrden', '')
                     && request.resource.data.cliente is string
                     && request.resource.data.cliente.size() > 0
                     && request.resource.data.cliente.size() <= 120
@@ -59,7 +131,7 @@ service cloud.firestore {
                     && request.resource.data.abono is number
                     && request.resource.data.abono >= 0
                     && request.resource.data.abono <= request.resource.data.costo;
-      allow delete: if esDueno();
+      allow delete: if esDueno() && resource.data.get('revisionOrden', 0) == 0 && resource.data.get('schemaVersion', 1) < 2;
     }
 
     // -------------------------------------------------------------------------
@@ -93,7 +165,10 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly(['uid', 'estado', 'modelo', 'actualizado'])
                && request.resource.data.estado in ['ingresado', 'revision', 'repuesto', 'reparado', 'entregado']
                && request.resource.data.modelo is string
-               && request.resource.data.modelo.size() <= 80;
+               && request.resource.data.modelo.size() <= 80
+               && getAfter(/databases/$(database)/documents/equipos/$(equipoId)).data.uid == request.auth.uid
+               && getAfter(/databases/$(database)/documents/equipos/$(equipoId)).data.estado == request.resource.data.estado
+               && getAfter(/databases/$(database)/documents/equipos/$(equipoId)).data.modelo == request.resource.data.modelo;
       }
 
       allow get:    if true;
@@ -101,6 +176,85 @@ service cloud.firestore {
       allow create: if seAutoAsigna() && formaValida();
       allow update: if esDueno() && seAutoAsigna() && mantieneDueno() && formaValida();
       allow delete: if esDueno();
+    }
+
+    // Datos del taller bajo ruta privada por usuario. Ninguna lectura pública.
+    match /usuarios/{uid}/eventos/{eventoId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid
+        && request.resource.data.uid == uid && request.resource.data.ordenId is string
+        && request.resource.data.huella is string && request.resource.data.huella.size() == 64
+        && request.resource.data.resumen is string && request.resource.data.resumen.size() <= 1000
+        && request.resource.data.confirmado == request.time
+        && getAfter(/databases/$(database)/documents/equipos/$(request.resource.data.ordenId)).data.uid == uid
+        && getAfter(/databases/$(database)/documents/equipos/$(request.resource.data.ordenId)).data.ultimaOperacion == eventoId;
+      allow update, delete: if false;
+    }
+    match /usuarios/{uid}/pagos/{pagoId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.confirmado == request.time
+        && request.resource.data.monto is int && request.resource.data.monto != 0
+        && request.resource.data.monto >= -100000000 && request.resource.data.monto <= 100000000
+        && request.resource.data.ordenId is string
+        && getAfter(/databases/$(database)/documents/equipos/$(request.resource.data.ordenId)).data.uid == uid
+        && getAfter(/databases/$(database)/documents/equipos/$(request.resource.data.ordenId)).data.ultimaOperacion == pagoId;
+      allow update: if autenticado() && request.auth.uid == uid
+        && !('revertidoPor' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revertidoPor'])
+        && getAfter(/databases/$(database)/documents/usuarios/$(uid)/pagos/$(request.resource.data.revertidoPor)).data.reversaDe == pagoId
+        && getAfter(/databases/$(database)/documents/usuarios/$(uid)/pagos/$(request.resource.data.revertidoPor)).data.monto == -resource.data.monto;
+      allow delete: if false;
+    }
+    match /usuarios/{uid}/config/{configId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid && configId == 'numeracion'
+        && request.resource.data.keys().hasOnly(['numero']) && request.resource.data.numero == 1;
+      allow update: if autenticado() && request.auth.uid == uid && configId == 'numeracion'
+        && request.resource.data.keys().hasOnly(['numero']) && request.resource.data.numero == resource.data.numero + 1;
+    }
+    match /usuarios/{uid}/clientes/{clienteId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nombre', 'telefono', 'creado'])
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 120
+        && request.resource.data.telefono is string && request.resource.data.telefono.size() >= 8 && request.resource.data.telefono.size() <= 30
+        && request.resource.data.creado == request.time;
+    }
+    match /usuarios/{uid}/plantillas/{plantillaId} {
+      function plantillaValida() {
+        let d = request.resource.data;
+        return d.titulo is string && d.titulo.size() > 0 && d.titulo.size() <= 120
+          && d.tipo in ['diagnostico', 'pantalla', 'bateria', 'carga', 'humedad', 'software']
+          && d.pasos is list && d.pasos.size() > 0 && d.pasos.size() <= 50
+          && d.por == uid && d.actualizado == request.time;
+      }
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid && plantillaValida() && request.resource.data.version == 1;
+      allow update: if autenticado() && request.auth.uid == uid && plantillaValida() && request.resource.data.version == resource.data.version + 1;
+      match /versiones/{versionId} {
+        allow read: if autenticado() && request.auth.uid == uid;
+        allow create: if autenticado() && request.auth.uid == uid
+          && request.resource.data == getAfter(/databases/$(database)/documents/usuarios/$(uid)/plantillas/$(plantillaId)).data;
+      }
+    }
+    match /usuarios/{uid}/repuestos/{repuestoId} {
+      allow read: if autenticado() && request.auth.uid == uid;
+      allow create: if autenticado() && request.auth.uid == uid
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 120
+        && request.resource.data.marca is string && request.resource.data.modelo is string
+        && request.resource.data.costo is int && request.resource.data.costo >= 0
+        && request.resource.data.disponible is int && request.resource.data.disponible > 0
+        && request.resource.data.disponible <= 10000 && request.resource.data.reservado == 0
+        && request.resource.data.creado == request.time;
+      allow update: if autenticado() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disponible', 'reservado', 'ultimaOperacion', 'actualizado'])
+        && request.resource.data.disponible is int && request.resource.data.reservado is int
+        && request.resource.data.disponible >= 0 && request.resource.data.reservado >= 0
+        && request.resource.data.disponible + request.resource.data.reservado <= resource.data.disponible + resource.data.reservado
+        && request.resource.data.actualizado == request.time
+        && getAfter(/databases/$(database)/documents/usuarios/$(uid)/eventos/$(request.resource.data.ultimaOperacion)).data.accion in ['reservar', 'consumir', 'liberar'];
     }
 
     // -------------------------------------------------------------------------

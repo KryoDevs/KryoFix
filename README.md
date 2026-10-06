@@ -1,138 +1,194 @@
-# TechFix Tracker Pro
+# KryoFix — Gestión de servicio técnico
 
-PWA de gestión para servicio técnico de equipos y smartphones: ingreso de equipos,
-seguimiento de estados, catálogo de precios, firma digital de conformidad, ticket
-imprimible con QR y página pública de seguimiento para el cliente.
+**Desarrollado por KryoDevs**, inspirado en Kryo / Mr Kryo.
 
-Stack: HTML/CSS/JavaScript sin bundler + Firebase (Auth, Firestore, Hosting).
+PWA privada para recepción, diagnóstico, reparación y seguimiento de equipos.
+HTML/CSS/JavaScript modular sin bundler + Firebase Auth, Firestore y Hosting.
 
----
+- [Mapa de trabajo y estado real](MAPA-DE-TRABAJO.md)
+- [Resultados del ciclo de validación y pendientes](VALIDACION.md)
+
+> Esta revisión no se ha desplegado a producción. No confundir las pruebas locales
+> con una certificación del Firebase real: la ejecución del emulador quedó bloqueada
+> por el entorno. El CI ahora exige esa prueba antes de publicar.
+
+## Funciones disponibles en código
+
+### Recepción y taller
+
+- Modelos sugeridos por marca (Apple, Samsung, Xiaomi, Motorola y Huawei), catálogo
+  privado e historial cargado; entrada manual para modelos/variantes no incluidos.
+- Síntomas habituales con comprobaciones orientativas, sin afirmar defectos de
+  fábrica ni diagnósticos confirmados. Frecuencia basada en selecciones del taller.
+- Agenda privada: reutilización de cliente por teléfono **con selección explícita**.
+  Clientes nuevos no se fusionan automáticamente aunque compartan teléfono.
+- Advertencia de IMEI/serie duplicado entre órdenes activas **cargadas**. No es una
+  restricción de unicidad ni una búsqueda completa en documentos históricos.
+- Numeración transaccional por usuario: `KRF-000001`. Órdenes antiguas conservan sus
+  números `TF-…`, IDs y QR. La recepción nueva requiere conexión; no asigna un
+  correlativo definitivo offline. Reintentos del mismo ingreso en la sesión
+  conservan el ID y detectan cambios de contenido.
+- Estado, prioridad, próxima acción, ticket QR, firma, CSV y seguimiento público.
+- Las fotos no terminan de guardarse antes de finalizar la compresión; una lectura
+  de imagen obsoleta no puede repoblar el formulario después de salir.
+
+### Ficha de trabajo
+
+En una tarjeta: **Abrir ficha de trabajo**. Secciones:
+
+- **Resumen:** recepción, próxima acción, prioridad y notas privadas.
+- **Diagnóstico:** variante exacta, riesgo, pruebas, hipótesis y causa confirmada.
+  Flujo inicial de carga: primero riesgos, después cable/cargador y comprobaciones.
+- **Procedimiento:** pasos marcables, borrador por orden y comparación de conflictos.
+  Se pueden aplicar plantillas privadas con confirmación de reinicio del avance.
+- **Calidad:** pantalla, carga, audio, cámaras y conectividad; «no aplica» exige motivo.
+- **Presupuesto:** hasta 20 conceptos, cantidades, precios, total calculado, plazo,
+  condiciones, versiones y registro manual de aprobación/rechazo del cliente.
+  Cambiar el presupuesto deja su autorización pendiente otra vez.
+- **Pagos:** movimientos idempotentes y reversos, sin borrar el pago original.
+  Abonos de recepción/legados se preservan como apertura sin inventar fechas.
+- **Repuestos:** reserva, consumo y liberación por lote; comprobación de marca,
+  modelo y confirmación humana de variante; nunca stock negativo.
+- **Garantía:** evaluación asociada a la orden entregada, sin alterar su entrega
+  original. Los cambios se conservan en eventos; no crea automáticamente otra orden.
+- **Contacto:** prepara WhatsApp y registra manualmente el resultado. **No envía
+  automáticamente ni acredita recepción del mensaje.**
+- **Historial:** eventos privados con fecha confirmada, versiones de presupuestos
+  y cambios de garantía. El historial legado de estados se sigue conservando.
+
+Las órdenes nuevas con costo requieren presupuesto aprobado y calidad válida antes
+de pasar a listas. Si una nueva prueba o presupuesto invalida una reparación lista,
+vuelve a revisión. La entrega exige firma, estado listo y una excepción explícita
+si queda deuda; consume/libera reservas antes de entregar. Un monto cambiado
+durante la firma produce conflicto, no un cobro silencioso.
+
+### Gestión del taller
+
+Botón **Gestión del taller**:
+
+- Historial paginado del servidor, más allá de las 500 órdenes del tablero.
+- Agenda de clientes creados con el nuevo flujo.
+- Inventario por lotes recibidos, proveedor, costo y variante.
+- Plantillas propias, versionadas, con fuente/manual y un paso por línea; las
+  órdenes conservan una copia y no cambian al editar una plantilla.
+- Informe que recorre todas las órdenes, suma deuda incluyendo entregados y calcula
+  pagos netos registrados en el mes, excluyendo aperturas sin fecha verificable.
+  Usa la fecha confirmada por servidor cuando está disponible.
+- Lista de pendientes sugeridos de autorización, repuestos y retiro.
+
+El tablero conserva su límite de 500 registros con aviso visible. El informe
+completo es una consulta paginada bajo demanda, **no un agregado contable atómico
+ni un proceso de servidor programado**. Puede generar lecturas facturables.
+
+## Confiabilidad y privacidad
+
+- Borradores de procedimiento en memoria de sesión, independientes del DOM:
+  sobreviven a filtros, ordenamiento y actualizaciones ajenas. No sobreviven a una
+  recarga. Advertencia al salir; limpieza al cerrar o cambiar sesión.
+- La ficha pide confirmación antes de descartar formularios. La navegación no
+  descarta otros campos silenciosamente al guardar una sección.
+- Procedimientos: huella + revisión y transacción, sin sobrescritura forzada.
+- Pagos, estados, edición y entrega: revisión de orden, operación idempotente,
+  relectura transaccional de propiedad/estado y evento en la misma operación.
+- Las operaciones críticas requieren conexión. El indicador distingue caché,
+  escrituras pendientes, error y confirmación del servidor para la consulta de órdenes.
+- Las reglas nuevas validan transiciones, revisión, pertenencia y relación entre
+  espejo público y orden; diario inmutable, pagos con reversos y rutas privadas.
+  Su ejecución real debe pasar por el emulador/CI antes del despliegue.
+- Se bloqueó la migración de adopción de órdenes sin dueño desde la consola del
+  navegador. No asignar propiedad histórica sin respaldo y verificación administrativa.
+- Nuevas órdenes y órdenes con operaciones auditadas no se borran físicamente.
+- Fotos y firmas **todavía están en Firestore/base64**. No se implementó ni ejecutó
+  una migración a Storage. No hay enlaces públicos permanentes nuevos de evidencias.
+
+No es un sistema multi-técnico compartido: el aislamiento sigue siendo por `uid`.
+Tampoco es facturación tributaria, contabilidad certificada ni diagnóstico automático.
 
 ## Estructura
 
-```
-app/                 Lo que se publica en Firebase Hosting
-  index.html         Aplicación del técnico (login + taller + catálogo)
-  app.js             Orquestación UI, sesión y acceso a Firestore
-  dominio.js         Reglas puras compartidas, estados, importes y códigos
-  tema.js            Aplica el tema guardado antes del primer pintado
-  status.html/.js    Página pública de seguimiento (la que abre el QR)
-  sw.js              Service worker (offline)
-  estilos.css        Estilos (sus clases deben coincidir con las de app.js)
-  ticket-qr.png      QR de respaldo del ticket (generado, no depende de terceros)
-  vendor/            Dependencias de ejecución servidas desde el propio origen
-                     (ver app/vendor/README.md)
-firestore.rules      Reglas de seguridad  <-- deben desplegarse a mano
-firestore.indexes.json
-dev/preview.html     Banco de pruebas visual (no se despliega)
-tools/audit.mjs      Auditoría estática de seguridad y regresiones
-tools/vendor.mjs     Copia app/vendor/ desde node_modules (versiones fijadas)
-tools/generar-qr.mjs Genera app/ticket-qr.png
-tests/               Tests con jsdom y un doble de Firebase en memoria
-ANALISIS.md          Informes de auditoría y su resolución
+```text
+app/
+  index.html / estilos.css         Interfaz y sistema visual claro/oscuro
+  app.js                          Orquestación, recepción, impresión y código legado
+  dominio.js                      Modelos, guías base y reglas compartidas
+  borradores.js                   Procedimientos en memoria de sesión
+  ordenes-repositorio.js          Consulta privada y procedimiento transaccional
+  taller-dominio.js               Diagnóstico, calidad, dinero y reglas de trabajo
+  taller-servicio.js              Casos de uso, transacciones, inventario y consultas
+  ficha.js                       Ficha privada, agenda, plantillas e informes
+  status.html / status.js          Seguimiento público mínimo
+  vendor/                         SDKs servidos desde el propio origen
+  sw.js                           PWA y cachés versionadas
+firestore.rules / firestore.indexes.json
+playwright.config.mjs
+tests/                            Unitarias e integración con doble de Firestore
+  browser/                        Chromium, UI real con backend de pruebas aislado
+  emulator/                       Reglas y transacciones contra Firestore emulado
 ```
 
-## Modelo de datos
+Colecciones:
 
-| Colección     | Visibilidad                   | Contenido                                            |
-|---------------|-------------------------------|------------------------------------------------------|
-| `equipos`     | **Privada**, solo el dueño    | Orden completa: cliente, teléfono, IMEI, PIN, foto, firma, historial |
-| `catalogo`    | **Privada**, solo el dueño    | Precios de reparación del técnico                     |
-| `seguimiento` | **Pública por ID, sin listado**    | Espejo mínimo: `uid`, `estado`, `modelo`, `actualizado` |
+- `equipos/{id}`: privada por propietario. Las nuevas usan `schemaVersion: 2`;
+  no se hace una migración masiva de documentos antiguos.
+- `catalogo/{id}`: tarifario privado, con `uid`.
+- `seguimiento/{id}`: solo `uid`, `estado`, `modelo`, `actualizado`; get público,
+  sin listado ni datos de cliente/diagnóstico/pagos.
+- `usuarios/{uid}/clientes`, `/repuestos`, `/plantillas`, `/eventos`, `/pagos`,
+  `/config`: datos privados del taller. Las versiones de plantilla son subcolecciones.
 
-`seguimiento` existe para que la página del QR no necesite acceso a los datos
-personales. Las reglas limitan el documento a esas cuatro claves, así que es
-imposible publicar por error un teléfono o un PIN.
+## Desarrollo y verificaciones
 
-Campos destacados de una orden: `idOrden` (`TF-251002-001`, legible para dictar
-por teléfono), `fecha` (ISO 8601), `fechaReparacion`, `fechaEntrega`,
-`historial` (`[{estado, en, por}]`) y `evidencia`/`firmaCliente` (base64).
-
-## Desarrollo
+Recomendado: **Node 22**, Java 21 para emuladores.
 
 ```bash
-npm install          # dependencias de desarrollo (eslint, jsdom, firebase, …)
-npm run serve        # sirve app/ en http://localhost:8080  (vista previa en vivo)
-npm run serve:dev    # sirve la raíz; abre /dev/preview.html para ver los componentes
-npm run check        # lint + auditoría estática + tests  (lo mismo que corre el CI)
-
-npm run vendor       # recalcula app/vendor/ desde las versiones fijadas
-npm run qr           # regenera app/ticket-qr.png (usa el dominio de producción)
-npm run assets       # vendor + qr, tras actualizar dependencias o el dominio
+npm ci
+npm run serve            # 0.0.0.0:8080; en otra terminal
+npm run check            # lint + auditoría estática + 136 pruebas locales
+npm run test:rules       # Java 21; proyecto demo-kryofix, nunca producción
+npx playwright install --with-deps chromium
+npm run test:browser     # con servidor local abierto; 8 pruebas de navegador
+npm run check:full       # todas las anteriores; falla si cualquier capa falla
 ```
 
-`npm run check` es la verificación completa: lint, auditoría estática y 87 tests.
-La auditoría falla si reaparece alguno de los problemas documentados en
-`ANALISIS.md` (consultas sin filtro por `uid`, clases CSS huérfanas, service
-worker sin `skipWaiting`, archivos no UTF-8, dependencias por CDN, CSP con
-`unsafe-inline`, QR generado por terceros, etc.).
+En CI, Playwright inicia su servidor automáticamente. Para un Chromium ya
+instalado se puede usar `KRYOFIX_CHROMIUM=/ruta/al/binario npm run test:browser`.
+El entorno de pruebas del navegador no inicia sesión ni escribe en producción.
+La prueba de arranque con SDK real bloquea las peticiones de APIs externas.
 
-### Dependencias de ejecución
+Firebase 12.19.0 compat, SweetAlert2 11.26.25 y QR 2.0.4 están versionados en
+`app/vendor/`. Después de actualizar SDKs: `npm run vendor` y nueva versión de SW.
+Se fijan versiones y overrides compatibles de gRPC y undici; ver auditoría y
+advertencias transitivas pendientes en `VALIDACION.md`.
 
-Las librerías de runtime (Firebase 10.14.1 compat, SweetAlert2 11.26.25 y
-qrcode-generator 2.0.4) **se versionan dentro de `app/vendor/`**, no se cargan de
-un CDN. Las mismas versiones están como `devDependencies` fijadas solo para poder
-copiarlas de forma reproducible con `npm run vendor`. Para subir una versión:
-cambiar la versión exacta en `package.json`, `npm install`, `npm run vendor`,
-actualizar `VERSION` en `app/sw.js` y subir el número si los archivos son fijos
-en algún HTML.
+## Publicación y compatibilidad
 
-## Despliegue
+El nombre KryoFix no cambia proyecto/dominio Firebase, repositorio, IDs históricos,
+QR ni claves locales. Se mantienen APIs internas `TechFix*` por compatibilidad.
 
-El hosting se publica solo con GitHub Actions (preview en cada PR, producción al
-mergear a `main`). Ambos workflows de hosting ejecutan `npm ci` y `npm run check` antes de publicar;
-un fallo de calidad bloquea el despliegue de ese workflow.
+- Calidad/preview/producción dependen de `verificacion.yml`: pruebas locales,
+  emulador y navegador. Una falla bloquea el despliegue de hosting.
+- Al integrar en `main`, el workflow publica **reglas e índices antes del hosting**
+  con la cuenta de servicio ya configurada en GitHub. Esa cuenta debe tener los
+  permisos correspondientes; si no los tiene, el workflow falla antes de hosting.
+- El preview de PR no modifica reglas del proyecto de producción. Probar los
+  flujos nuevos en un proyecto de staging con sus reglas antes de usarlos con datos reales.
+- Las reglas nuevas y las operaciones antiguas de clientes abiertos no tienen
+  compatibilidad completa de escritura: coordinar la actualización y recarga de
+  clientes; respaldar y verificar datos antiguos antes de publicar.
+- Ninguna publicación ni migración se ejecutó durante esta implementación.
 
-**Las reglas e índices de Firestore NO se despliegan con ese workflow** y hay que
-publicarlos manualmente:
+## Pendiente para cerrar todo el mapa
 
-```bash
-firebase deploy --only firestore:rules,firestore:indexes
-```
+1. Ejecutar y corregir, si corresponde, la suite real del emulador y validar Auth,
+   persistencia, dos sesiones y las reglas desplegadas en staging.
+2. Migración de fotos/firmas a Storage con respaldo, verificación y retención.
+3. Aprobación pública por enlace protegido: hoy solo hay registro manual verificable
+   por el técnico, ligado a una versión de presupuesto.
+4. Compras pendientes, ajustes/devoluciones de inventario y garantías como órdenes
+   de retrabajo vinculadas: hoy hay lotes, reservas y seguimiento del caso original.
+5. Backend, consentimiento, cola, reintentos y proveedor para mensajes automáticos;
+   por ahora hay mensajes preparados y pendientes sugeridos, no envíos en segundo plano.
+6. Agregados del servidor y analítica de tiempos/resultados; el informe actual es
+   paginado bajo demanda. Roles/multi-sucursal permanecen fuera del alcance inmediato.
 
-El índice compuesto (`uid` + `timestamp desc`) es obligatorio: sin él la lista de
-equipos no carga y la app muestra el aviso correspondiente.
-
-### Migración desde la versión anterior (una sola vez)
-
-Los datos creados antes de la revisión no tienen espejo de `seguimiento`, y
-algunos pueden no tener `uid`. Con las reglas nuevas quedarían inaccesibles.
-
-> Hazlo **antes** de desplegar `firestore.rules`, con sesión iniciada en la app,
-> desde la consola del navegador:
-
-```js
-await TechFix.migrar()
-```
-
-Esto rellena el `uid` que falte y crea el espejo público de cada orden, de modo
-que los códigos QR ya impresos siguen funcionando. Después, despliega las reglas.
-
-### Seguridad del hosting
-
-`firebase.json` define la CSP (`script-src 'self'`, sin `unsafe-inline`), HSTS,
-`X-Content-Type-Options`, `X-Frame-Options` y `Referrer-Policy`. Al no haber
-scripts de terceros, cualquier servicio externo nuevo obliga a modificar la CSP
-de forma explícita: es intencional.
-
-## Variables y secretos
-
-La `apiKey` de Firebase que aparece en el código **no es un secreto**: identifica
-el proyecto y está pensada para ser pública. La protección real son
-`firestore.rules`. El único secreto del repositorio es
-`FIREBASE_SERVICE_ACCOUNT_TECHFIX_TRACKER_9A128`, almacenado en GitHub Actions.
-
-
-## Mejoras de octubre de 2026
-
-- Prioridad normal/alta/urgente y notas internas editables (no se publican ni imprimen).
-- Filtros rápidos por etapa, ordenamiento por prioridad y atajo `/` para buscar.
-- Tarifario **de ejemplo**, con confirmación y sin duplicados al repetir la carga;
-  sus precios son orientativos, no cotizaciones de mercado.
-- Entrega con opción explícita de registrar el saldo pagado (desmarcada inicialmente).
-  El PIN se vacía al entregar; no elimina los PIN de órdenes históricas automáticamente.
-- Consulta pública por ID o enlace completo. El número humano `TF-…` no es el ID:
-  usar el **código de seguimiento** o enlace impreso, no el número humano.
-- CSV protegido frente a fórmulas; campos móviles y controles por teclado corregidos.
-
-Ver `MEJORAS.md` para resultados de los ciclos, límites y tareas pendientes.
+No se afirma que todas las fases estén cerradas ni que no existan vulnerabilidades.

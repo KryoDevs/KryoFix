@@ -1,5 +1,5 @@
 {
-  "name": "techfix-tracker",
+  "name": "kryofix",
   "version": "1.0.0",
   "private": true,
   "description": "PWA de gestion para servicio tecnico de equipos y smartphones (Firebase Hosting + Firestore).",
@@ -13,11 +13,17 @@
     "qr": "node tools/generar-qr.mjs",
     "assets": "npm run vendor && npm run qr",
     "serve": "python3 -m http.server 8080 --bind 0.0.0.0 --directory app",
-    "serve:dev": "python3 -m http.server 8081 --bind 0.0.0.0"
+    "serve:dev": "python3 -m http.server 8081 --bind 0.0.0.0",
+    "test:rules": "firebase emulators:exec --project demo-kryofix --only firestore \"node --test tests/emulator/*.test.mjs\"",
+    "test:browser": "playwright test",
+    "check:full": "npm run check && npm run test:rules && npm run test:browser"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "@playwright/test": "1.63.0",
     "eslint": "9.37.0",
-    "firebase": "10.14.1",
+    "firebase": "12.19.0",
+    "firebase-tools": "15.32.1",
     "jsdom": "27.0.0",
     "jsqr": "1.4.0",
     "pngjs": "7.0.0",
@@ -26,5 +32,13 @@
   },
   "engines": {
     "node": ">=20.19.0"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.5"
+    },
+    "firebase-tools": {
+      "undici": "6.29.0"
+    }
   }
 }
