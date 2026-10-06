@@ -5,7 +5,7 @@ Fecha: 6 de octubre de 2026 · Estado: propuesta de ejecución incremental.
 
 > Objetivo: convertir el registro de equipos en un asistente de trabajo para Kryo / Mr Kryo, sin perder información, manteniendo el control técnico y sin reescribir la aplicación completa.
 >
-> Hay una implementación extendida de los flujos principales de F1–F6, pero no están cerradas todas las fases. El estado vigente está en la sección 11 y en VALIDACION.md; la sección 10 conserva el corte anterior. No se ha desplegado a producción.
+> Hay una implementación extendida de los flujos principales de F1–F6, pero no están cerradas todas las fases. El estado vigente está en la sección 12 y en VALIDACION.md; las secciones 10 y 11 conservan cortes anteriores. No se ha desplegado a producción.
 
 ## 1. Identidad del producto
 
@@ -353,3 +353,27 @@ WhatsApp no se envía en segundo plano; una autorización registrada por el téc
 no se presenta como aprobación digital del cliente.
 
 CI verificado del código final: [https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311).
+
+
+## 12. Continuación actual: backend, operación y dispositivos
+
+Esta sección reemplaza el estado de la sección 11. Los resultados reproducibles
+están en [VALIDACION.md](VALIDACION.md) y la activación en [DESPLIEGUE.md](DESPLIEGUE.md).
+
+- **F1:** transacciones/reglas ampliadas; pruebas de compras, stock y garantía en
+  emulador. Matriz Node y CI con Auth/Functions/Storage reales emulados.
+- **F2:** teléfono/tablet vertical y horizontal, WebKit, objetivos táctiles, teclado
+  simulado, fotos, firma con Pointer Events y protección de respuestas tardías.
+- **F3:** se conservan diagnósticos y plantillas privadas. Guías no autoritativas;
+  variantes y revisión técnica física siguen siendo responsabilidad del taller.
+- **F4:** aprobación externa protegida implementada y probada, caducidad/revocación,
+  versión y decisión única. No es una firma avanzada ni identidad autenticada.
+- **F5:** compras, recepción, ajustes/devoluciones, órdenes de garantía vinculadas,
+  archivo privado y retención explícita implementados. No se migró producción.
+- **F6:** consentimiento, cola, worker, backoff, callbacks y corte consistente del
+  servidor implementados. **Proveedor/adaptador real y activación pendientes**.
+
+No declarar puesta en marcha completa: faltan configuración/staging, proveedor,
+pruebas en hardware físico y tratamiento de avisos de herramientas. La matriz de
+navegadores pasó 75 ejecuciones; no se sustituye una prueba real de cámara, teclado,
+impresión o restauración de respaldos por una pantalla emulada.

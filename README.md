@@ -7,10 +7,26 @@ HTML/CSS/JavaScript modular sin bundler + Firebase Auth, Firestore y Hosting.
 
 - [Mapa de trabajo y estado real](MAPA-DE-TRABAJO.md)
 - [Resultados del ciclo de validación y pendientes](VALIDACION.md)
+- [Configuración, proveedor y puesta en marcha segura](DESPLIEGUE.md)
 
 > Esta revisión no se ha desplegado a producción. El CI aprobó las pruebas en
 > Node 20.19/22, el emulador de Firestore y Chromium. No equivale a validar el
 > proyecto productivo: todavía falta staging con Auth y datos legados.
+
+## Continuación: funcionalidades añadidas y límites
+
+Se incorporaron compras pendientes/recepción, ajustes y devoluciones, órdenes de
+retrabajo vinculadas y un backend privado de Functions. Este último implementa
+aprobación por enlace, archivo privado de evidencias, retención explícita,
+consentimiento/cola de mensajes e informes consistentes del servidor.
+
+**No está desplegado ni configurado con un proveedor de mensajes real.** La cola
+requiere un proveedor/adaptador compatible; no basta con pegar una URL de Meta o
+Twilio. Los envíos están desactivados por defecto. Ver DESPLIEGUE.md.
+
+La validación incluye 15 casos en cinco perfiles: computador, teléfono, tablet en
+ambas orientaciones y WebKit. Son perfiles emulados; quedan pruebas físicas y
+staging. El catálogo técnico no pretende cubrir todas las variantes de fabricantes.
 
 ## Funciones disponibles en código
 
@@ -94,14 +110,15 @@ ni un proceso de servidor programado**. Puede generar lecturas facturables.
   escrituras pendientes, error y confirmación del servidor para la consulta de órdenes.
 - Las reglas nuevas validan transiciones, revisión, pertenencia y relación entre
   espejo público y orden; diario inmutable, pagos con reversos y rutas privadas.
-  Las 8 pruebas del emulador pasaron en CI; incluyen competencia de stock y
+  Las 10 pruebas del emulador pasaron en CI; incluyen competencia de stock y
   escrituras directas maliciosas. Los movimientos exigen autorización, deltas
   exactos y reserva vinculada a orden/evento/lote.
 - Se bloqueó la migración de adopción de órdenes sin dueño desde la consola del
   navegador. No asignar propiedad histórica sin respaldo y verificación administrativa.
 - Nuevas órdenes y órdenes con operaciones auditadas no se borran físicamente.
-- Fotos y firmas **todavía están en Firestore/base64**. No se implementó ni ejecutó
-  una migración a Storage. No hay enlaces públicos permanentes nuevos de evidencias.
+- Fotos y firmas legadas siguen en base64 hasta activar/migrar. El backend ya
+  implementa Storage privado con copia verificada y retención explícita; todavía
+  no se ejecutó una migración productiva. No genera enlaces públicos permanentes.
 
 No es un sistema multi-técnico compartido: el aislamiento sigue siendo por `uid`.
 Tampoco es facturación tributaria, contabilidad certificada ni diagnóstico automático.
@@ -145,10 +162,11 @@ Recomendado: **Node 22**, Java 21 para emuladores.
 ```bash
 npm ci
 npm run serve            # 0.0.0.0:8080; en otra terminal
-npm run check            # lint + auditoría estática + 136 pruebas locales
-npm run test:rules       # 8 pruebas; Java 21; demo-kryofix, nunca producción
-npx playwright install --with-deps chromium
-npm run test:browser     # con servidor local abierto; 8 pruebas de navegador
+npm run check            # lint + auditoría estática + 157 pruebas locales
+npm run test:rules       # 10 pruebas; Java 21; demo-kryofix, nunca producción
+npx playwright install --with-deps chromium webkit
+npm run test:backend     # 4 escenarios API/Auth/Storage; requiere npm ci --prefix functions
+npm run test:browser     # 15 casos × 5 perfiles; Chromium y WebKit
 npm run check:full       # todas las anteriores; falla si cualquier capa falla
 ```
 
@@ -179,18 +197,20 @@ QR ni claves locales. Se mantienen APIs internas `TechFix*` por compatibilidad.
   clientes; respaldar y verificar datos antiguos antes de publicar.
 - Ninguna publicación ni migración se ejecutó durante esta implementación.
 
-## Pendiente para cerrar todo el mapa
+## Pendiente para puesta en marcha y cierre externo
 
-1. Validar Auth, persistencia, dos sesiones y reglas desplegadas en staging con
-   datos legados. El emulador ya pasó en CI, pero no sustituye esta validación.
-2. Migración de fotos/firmas a Storage con respaldo, verificación y retención.
-3. Aprobación pública por enlace protegido: hoy solo hay registro manual verificable
-   por el técnico, ligado a una versión de presupuesto.
-4. Compras pendientes, ajustes/devoluciones de inventario y garantías como órdenes
-   de retrabajo vinculadas: hoy hay lotes, reservas y seguimiento del caso original.
-5. Backend, consentimiento, cola, reintentos y proveedor para mensajes automáticos;
-   por ahora hay mensajes preparados y pendientes sugeridos, no envíos en segundo plano.
-6. Agregados del servidor y analítica de tiempos/resultados; el informe actual es
-   paginado bajo demanda. Roles/multi-sucursal permanecen fuera del alcance inmediato.
+1. Configurar y validar un proyecto de staging con Auth real, datos legados, dos
+   sesiones, índices, IAM, bucket y restauración de respaldo.
+2. Elegir el proveedor de mensajería, integrar su adaptador al contrato HTTP y
+   probar deduplicación/confirmaciones con un destinatario autorizado. No enviar
+   mensajes hasta tener consentimiento y activación explícita.
+3. Ejecutar migración por lotes de datos históricos tras respaldo/verificación;
+   revisar copias sin referencia y definir política legal de retención.
+4. Probar teléfonos/tablets físicos, cámara/teclado real, impresión y PWA instalada.
+5. Revisar los 9 avisos de herramientas (7 altos/2 moderados). El backend desplegable
+   tiene 0 avisos conocidos en el audit ejecutado, no una garantía de invulnerabilidad.
 
-No se afirma que todas las fases estén cerradas ni que no existan vulnerabilidades.
+Las funcionalidades anteriores ya tienen código, UI y pruebas; **no se presentan
+como servicios productivos activados**. Compras admiten recepción completa; informes
+atómicos limitados a 5000 órdenes/10000 pagos; catálogo técnico no exhaustivo. Ver
+VALIDACION.md y DESPLIEGUE.md para alcance y resultados exactos.

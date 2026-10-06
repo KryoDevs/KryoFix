@@ -1,193 +1,139 @@
-# KryoFix — Implementación y ciclo de validación
+# KryoFix — resultado del LOOP de implementación y validación
 
-Fecha: 6 de octubre de 2026. Rama de trabajo de Arena; **sin despliegue ni migración de producción**.
+Fecha: **6 de octubre de 2026**. Código en la rama de trabajo, sin integración en
+main, despliegue, migración productiva ni mensajes enviados a clientes.
 
-## Resultado comprobado
+## Estado comprobado
 
-| Verificación | Resultado |
+| Capa | Resultado |
 |---|---|
-| ESLint | Correcto |
-| Auditoría estática del repositorio | Correcta |
-| Pruebas locales de dominio, UI y doble de Firestore | **136 aprobadas, 0 fallidas** |
-| Playwright en Chromium real | **8 aprobadas, 0 fallidas** |
-| Diferencias de Git / whitespace | `git diff --check` limpio |
-| Reglas y transacciones en Firestore Emulator | **8 aprobadas en CI**, reglas compiladas |
-| Matriz de CI | **Node 20.19 y Node 22 aprobados** |
-| Firebase real / Auth real / staging | **No verificado** |
-| Despliegue o migración de datos reales | **No realizado** |
-| `npm audit` completo | **11 avisos: 7 altos y 4 moderados; 0 críticos** |
+| ESLint + auditoría estática | Correctos |
+| Pruebas de código, UI y motor de backend | **157 aprobadas localmente** |
+| Matriz Node 20.19 / 22 | CI aprobado para el corte anterior de 156; nueva ejecución requerida tras la última regresión |
+| Firestore Emulator | **10 escenarios aprobados en CI** |
+| API + Auth + Functions + Storage emulados | **4 escenarios end-to-end aprobados en CI** |
+| Chromium + WebKit | **75 ejecuciones aprobadas en CI**: 15 casos × 5 perfiles |
+| Audit del backend desplegable | **0 avisos conocidos** |
+| Audit de herramientas raíz | **9 avisos: 7 altos, 2 moderados; 0 críticos** |
+| Proyecto de staging, proveedor real y dispositivos físicos | **Pendientes de configuración/validación externa** |
 
-No se afirma «todo terminado», «sin errores posibles» o «sin vulnerabilidades».
-Las pruebas que pasan cubren escenarios definidos; no prueban todos los estados
-posibles, no certifican una reparación física y no reemplazan la validación con
-Firestore real y datos legados.
+CI completo del segundo ciclo: [37483586254](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37483586254).
+Ese ciclo incluye API, Storage y los cinco perfiles de navegador. La última revisión
+agrega un caso de callback temprano de mensajería y vuelve a exigir toda la suite.
 
-## Qué quedó implementado
+## Pendientes funcionales implementados en esta continuación
 
-### Confiabilidad y arquitectura
+### Compras, inventario y garantías
 
-- Borradores de procedimiento independientes del DOM, con apertura/foco conservados.
-- Comparación de versión y guardado transaccional de procedimientos.
-- Servicio de casos de uso para estados, edición, pagos, presupuestos, entrega,
-  inventario y seguimiento. Revisión de orden y eventos en la misma transacción.
-- IDs de operación, hash SHA-256 de solicitud y reintentos idempotentes para
-  operaciones de orden. Mismo ID con contenido diferente es rechazado.
-- Numeración central por usuario y reintento de ingreso en sesión con ID conservado.
-- Fecha confirmada por servidor para eventos y nuevos pagos; apertura legada sin
-  fecha inventada. Indicadores separan presupuesto, saldo y cobros registrados.
-- Reglas nuevas para pertenencia, revisión/transiciones, espejo vinculado,
-  diario inmutable y reversos. **Compiladas y probadas contra emulador en CI.**
-- Migración peligrosa de adopción de órdenes desde consola bloqueada.
-- SDK Firebase actualizado a 12.19.0; vendor regenerado y SW v14.
+- Compras pendientes con proveedor, cantidad y costo; recepción completa crea un
+  solo lote, cancelación no modifica stock. Reintentos idempotentes.
+- Ajustes de entrada/salida y devolución al proveedor con motivo, versión observable
+  de cantidades y diario inmutable. No se retiran unidades reservadas.
+- Reglas validan deltas, operación nueva y vínculo con el lote. Casos adversarios
+  contra emulador, no solo contra el servicio JavaScript.
+- Garantía como nueva orden de retrabajo, numeración central y vínculo en ambos
+  sentidos. No copia firma, pagos, PIN ni reservas; conserva la entrega original.
 
-### Operación y diseño
+### Backend privado y aprobación externa
 
-- Ficha privada con secciones, enlace privado por ID, navegación por teclado,
-  controles accesibles, diseño móvil y temas claro/oscuro.
-- Próxima acción por orden y acciones secundarias agrupadas.
-- Diagnóstico que distingue síntoma, riesgo, prueba, hipótesis y causa confirmada.
-- Control de calidad y excepciones justificadas. Una prueba fallida o presupuesto
-  invalidado devuelve a revisión una reparación que estaba lista.
-- Plantillas propias versionadas, fuente/manual, copia por orden y confirmación
-  para reemplazar el procedimiento y reiniciar los pasos.
-- Presupuesto desglosado con total calculado y aprobación manual por versión.
-- Pagos/reversos, abonos de apertura, bloqueo de sobrescritura del acumulado.
-- Entrega con firma, calidad/autorización y motivo para deuda pendiente. Captura
-  revisión al abrir la firma para impedir cobros sobre un resumen obsoleto.
-- Agenda creada en recepciones nuevas y selección explícita de cliente recurrente.
-- Lotes de repuestos, costo/proveedor/variante, reserva, consumo y liberación.
-  Reglas de servidor exigen autorización, deltas exactos, evento nuevo y vínculo
-  entre reserva, lote y orden; ya no dependen solo de controles del navegador.
-- Seguimiento de garantía sin reabrir la entrega original, con copias en eventos.
-- Mensajes de WhatsApp preparados y registro manual del resultado de contacto.
-- Historial paginado e informes bajo demanda más allá de las 500 órdenes del tablero.
+- API de Functions con verificación de ID token, dueño y entrada JSON acotada.
+- Presupuesto por enlace de 256 bits, hash almacenado, caducidad de 48 horas,
+  revocación al emitir otro y vínculo al desglose/versiones actuales.
+- Decisión transaccional de un solo uso, reintento de la misma decisión y diario.
+  No se presenta la posesión de un enlace como identidad legal o firma avanzada.
+- Página pública sin datos personales privados, renderizado con texto y sin XSS.
+- Storage privado: copia verificada antes de retirar base64, acceso autenticado y
+  archivo automático de nuevas imágenes cuando el backend está configurado.
+- Retención explícita, job con cursor, exclusión durante borrado y auditoría. No se
+  borran archivos por defecto ni se realizó migración masiva.
+- Informe transaccional del servidor, zona Santiago, límite declarado de volumen.
 
-## LOOP realizado: detectar → corregir → volver a probar
+### Mensajería
 
-| Ciclo / área | Hallazgo | Corrección y regresión |
+- Consentimiento/revocación por teléfono, cola idempotente, comprobación de estado,
+  lease, reintentos con backoff y estados distintos de aceptación/entrega.
+- Generación de avisos por cambios futuros y programación explícita desde la ficha.
+- Callback HMAC autenticado. Respuesta perdida o callback temprano no degradan una
+  entrega confirmada. Tras cinco intentos inciertos, revisión manual.
+- **No hay proveedor contratado ni configurado.** El adaptador debe cumplir el
+  contrato de `DESPLIEGUE.md`; no se afirma integración directa lista con Meta o
+  Twilio ni se envían mensajes usando WhatsApp Web. Desactivado por defecto.
+
+## Teléfonos y tablets
+
+La matriz ejecuta **los mismos 15 casos** en:
+
+| Perfil | Motor | Tamaño inicial |
 |---|---|---|
-| Integración | Test antiguo esperaba numeración local `TF-…` en ingresos nuevos | Nueva numeración `KRF-…`; se conserva la histórica sin renombrar documentos ni QR |
-| Formularios | Asignar `type` a un `textarea` provocaba excepción y ocultaba el formulario | Tipo solo en inputs; prueba de apertura/guardado de diagnóstico |
-| Selectores | Una opción inicial vacía impedía autorizar correctamente un presupuesto | Valor inicial válido; flujo navegador presupuesto → aprobación → pago |
-| Modal nativo | SweetAlert se dibujaba detrás de `<dialog>` y bloqueaba confirmación | Confirmaciones dentro del diálogo activo; prueba móvil de cancelar descarte |
-| Accesibilidad | IDs de campos repetidos en formularios de pago/reverso | Identificadores únicos y etiquetas asociadas |
-| Navegación | Riesgo de perder cambios de otro formulario en una sección | Bloqueo hasta guardar/descartar los cambios de ese formulario |
-| Concurrencia | Resumen de firma podía quedar obsoleto al recibir otro pago | Revisión capturada al abrir; entrega rechazada si hubo cambios |
-| Recepción | Reintento incierto podía crear otra orden con nuevo ID | Nonce de ingreso por sesión y hash del contenido; revisión de historial si cambia |
-| Sesión | Imagen o ingreso tardío podía actualizar UI tras cerrar sesión | Token de selección, época de sesión y limpieza de modales/borradores |
-| Fotografías | Era posible guardar antes de terminar la compresión | Espera explícita; callbacks obsoletos no repueblan evidencia privada |
-| Control final | Cambios de calidad o autorización podían dejar una orden inválida como lista | Vuelta automática a revisión y actualización del espejo |
-| Dinero | Fecha del equipo podía confundirse con fecha de cobro | Ledger separado, fecha confirmada y apertura sin fecha ficticia |
-| Dependencias | SDK antiguo y versiones transitivas afectadas | Firebase 12.19.0, gRPC 1.14.5 y undici 6.29.0; quedan alertas de herramientas |
-| Node 20 / CI | Una prueba comprobaba el PIN antes de terminar la entrega asíncrona | Reproducido en Node 20.19, espera por estado observable y nueva matriz aprobada |
-| Inventario / reglas | El servicio comprobaba autorización, pero las reglas de stock no ofrecían la misma protección | Autorización previa, deltas exactos, reserva/evento/lote vinculados; pruebas adversarias y flujo reserva/consumo/liberación en emulador |
-| Entorno de navegador | No se podía descargar Chromium por los hosts habituales y faltaban librerías | Binario y librerías temporales fuera del repo; se ejecutaron las 8 pruebas reales |
+| Computador | Chromium | 1280 × 900 |
+| Teléfono táctil | Chromium | 390 × 844 |
+| Tablet vertical | Chromium | 820 × 1180 |
+| Tablet horizontal | Chromium | 1180 × 820 |
+| Tablet tipo Safari | WebKit | 820 × 1180 |
 
-El LOOP no es un proceso infinito en segundo plano ni un script que modifica código
-sin revisión. Se repitieron implementación, pruebas, inspección del error y
-corrección, y se volvió a ejecutar la suite completa después de los cambios.
+Incluye diagnóstico, presupuesto/autorización/pagos/reversos, conflictos de
+borrador, compras/devoluciones, garantías, firma táctil simulada con rotación,
+selección/compresión de foto, viewport reducido como al abrir teclado, contraste
+básico oscuro, aprobación pública y rechazo de enlaces inválidos. También se
+conserva el caso a 360 px. Objetivos táctiles de al menos 44 px y fuente de campos
+16 px en pantallas táctiles; el zoom no está bloqueado.
 
-## Alcance de las pruebas de navegador
+**Límite de la evidencia:** son navegadores reales con perfiles emulados, no
+Android/iOS físicos. Los flujos autenticados del navegador usan un doble aislado de
+Firestore; API/Auth/Storage se verifican por separado contra emuladores reales.
+El teclado virtual, la cámara física, Apple Pencil, impresión y PWA instalada deben
+probarse en hardware. No es una certificación completa de accesibilidad WCAG.
 
-1. Ficha de diagnóstico, riesgo y guardado sin errores JavaScript.
-2. Presupuesto → autorización → pago → reverso, conservando trazabilidad.
-3. Vista de 360 px, teclado, sin desbordamiento y descarte cancelable.
-4. Borrador ante cambio ajeno y conflicto del procedimiento.
-5. Inventario, gestión e informe paginado.
-6. Creación de plantilla y aplicación con confirmación.
-7. Arranque del SDK Firebase empaquetado y login, sin credenciales reales.
-8. Contraste básico de texto/fondo de la ficha en tema oscuro (>4,5:1).
+## Errores encontrados y corregidos durante el LOOP
 
-Los flujos autenticados usan un doble de Firebase **dentro de un navegador real**,
-no una conexión al proyecto productivo. La prueba del SDK real bloquea APIs externas.
-El contraste de una ficha no equivale a una auditoría WCAG completa de toda la app.
-
-## Emulador y CI: bloqueo local resuelto mediante GitHub Actions
-
-El intento local de `npm run test:rules` falló antes de levantar Firestore:
-`Could not spawn java -version`. No había Java y las descargas necesarias estaban
-restringidas. No se sustituyó el emulador por un mock ni se probó contra producción.
-
-Se subieron los cambios **solo a la rama de trabajo** y se ejecutó el CI con Java 21.
-El primer ciclo aprobó emulador/navegador, pero falló una prueba en Node 20.19.
-Se reprodujo localmente y se corrigió una espera temporal: ahora la prueba espera
-el estado de entrega confirmado. El segundo ciclo aprobó toda la matriz.
-
-Una revisión adicional reforzó las reglas de inventario y agregó dos escenarios
-adversarios. El tercer ciclo volvió a aprobar la matriz, las reglas y el navegador:
-
-- [CI completo del código final (commit `df48d3c`)](https://github.com/KryoDevs/TechFix-Tracker/actions/runs/37435626311).
-- Node 20.19 y Node 22: lint, auditoría estática y 136 pruebas por ejecución.
-- Integración: 8 pruebas de emulador y 8 de Chromium, todas aprobadas.
-- No hubo integración en `main`, despliegue ni migración de datos reales.
-
-Los ocho escenarios del emulador usan los módulos de dominio/servicio reales:
-
-1. Lectura propia, ajena, anónima y rechazo del listado público.
-2. Montos inválidos, suplantación y escrituras sin evento/revisión.
-3. Creación atómica de correlativo, cliente y espejo público.
-4. Pago, reverso y diario inmutable.
-5. Procedimiento legado, conflicto y orden entregada.
-6. Competencia por la última unidad de stock.
-7. Reserva no autorizada rechazada, incluso mediante escritura directa.
-8. Lote y cantidades falsos rechazados; reserva, consumo y liberación legítimos;
-   rechazo de reutilización de un evento anterior.
-
-`.github/workflows/verificacion.yml` instala Java 21 y Chromium en el runner y
-exige estas capas. Los despliegues dependen de ese workflow. Las acciones de
-checkout, Node y Java se actualizaron tras los avisos de deprecación del primer CI.
-El emulador no sustituye pruebas de Auth/persistencia/índices en un proyecto de staging.
-
-Al integrar en `main`, el workflow está preparado para publicar reglas/índices
-antes del hosting, usando la cuenta de servicio existente. Necesita permisos
-suficientes y una ventana de actualización de clientes. El preview de PR no toca
-las reglas de producción.
-
-## Dependencias: pendientes reales
-
-El `npm audit` final reporta 11 avisos transitivos (7 altos, 4 moderados), en la
-cadena de herramientas de Firebase CLI, con causas en `braces`, `basic-ftp`,
-`@opentelemetry/core` y `uuid` y sus dependientes. No se afirma que sean inocuos.
-
-- Se corrigió la dependencia gRPC del SDK y undici del CLI con versiones fijadas.
-- No se aplicó el downgrade forzado de Firebase sugerido por el resolvedor.
-- No se cambiaron indiscriminadamente APIs mayores de herramientas para ocultar
-  avisos; algunas no tienen parche publicado dentro del rango utilizado.
-- Revisar una actualización compatible del CLI y repetir emuladores/despliegue de
-  prueba antes de declarar cerrada esta parte. `npm audit --omit=dev` no es una
-  medida suficiente aquí, porque los SDKs del frontend se copian desde devDependencies.
-
-## Qué falta para terminar todo el mapa original
-
-| Pendiente | Situación real / siguiente validación |
+| Hallazgo | Corrección / regresión |
 |---|---|
-| Firebase real / staging | Emulador aprobado en CI; pendientes Auth real, persistencia, índices y datos legados en staging |
-| Storage y retención | No implementados. Fotos/firmas conservan el formato actual; no hubo migración ni pérdida de datos |
-| Aprobación externa por enlace | No implementada. Hoy hay registro manual por versión con evidencia del técnico |
-| Compras, ajustes y devoluciones de stock | No implementados. Existen lotes recibidos, reserva, consumo y liberación |
-| Garantía como nueva orden de retrabajo | No implementada. Existe seguimiento del caso vinculado a la orden original |
-| Mensajes automáticos | No implementados. Falta backend, consentimiento, cola, proveedor, reintentos y confirmación de entrega |
-| Métricas agregadas de servidor | No implementadas. Existe informe paginado bajo demanda, no un corte atómico |
-| Catálogo canónico de variantes | Modelos locales y variante manual; no una base exhaustiva con identificadores del fabricante |
-| Validación real de taller | Pendientes impresión física, dos sesiones reales, pérdida de red real y restauración de respaldos |
+| Pruebas antiguas emitían eventos de mouse al migrar la firma a Pointer Events | Casos actualizados y cobertura de dedo/lápiz, segundo puntero y cancelación |
+| Selector de confirmación de entrega no coincidía con el texto real | Selector exacto; nueva ejecución de la matriz completa |
+| Un segundo dedo podía interferir con el trazo | Un único pointerId activo; limpieza/cancelación terminan el trazo |
+| Respuesta de firma anterior podía cerrar otra orden abierta | Token de apertura, epoch de sesión y restauración de controles por diálogo |
+| Inicialización síncrona de Auth accedía antes a variables de firma | Estado inicializado antes de registrar callbacks; suite completa repetida |
+| Reintento de lote aceptaba distinto contenido silenciosamente | Huella de contenido y rechazo de ID reutilizado |
+| Retención podía competir con reemplazo de archivo | Bloqueo durante eliminación y comprobación de identidad antes de marcar borrado |
+| Presupuesto malformado podía llegar al enlace | Validación de desglose, total y montos de la orden en el servidor |
+| Callback del proveedor podía adelantarse a la respuesta del envío | Confirmación temprana y estados terminales protegidos; caso adicional de respuesta perdida |
+| API privada del mismo origen podía entrar en estrategia genérica del SW | Exclusión explícita de `/api/`; prueba de no interceptación |
 
-No se requieren contraseñas ni tokens en el chat. La configuración de servicios
-externos debe realizarse con los gestores de secretos y permisos correspondientes.
-No se activarán envíos a clientes ni migraciones masivas sin esa preparación.
+No existe un LOOP infinito autónomo. Se repitieron cambios, pruebas, revisión y
+corrección; los fallos no se ocultaron ni se marcaron como aprobados.
 
-## Cómo repetir la verificación
+## Activación y límites restantes
+
+Ver [DESPLIEGUE.md](DESPLIEGUE.md): proyecto aislado, bucket/IAM, secretos, proveedor,
+consentimientos, pruebas físicas y puerta de publicación. Los workflows bloquean
+Hosting hasta confirmar configuración compatible mediante `KRYOFIX_BACKEND_READY`.
+
+- Código y pruebas no equivalen a despliegue operativo. No se inventaron pruebas
+  con credenciales reales o un proveedor externo.
+- Se conservaron datos legados, IDs y QR. La migración masiva exige respaldo y
+  verificación; las copias sin referencia tras conflictos requieren revisión.
+- El catálogo de modelos/variantes no es una base exhaustiva de fabricantes. Las
+  guías técnicas no sustituyen manuales de variante, formación ni diagnóstico físico.
+- Compras: recepción completa por lote; no hay recepción parcial ni contabilidad fiscal.
+- Métricas consistentes hasta los límites documentados; no se oculta un corte parcial.
+- Quedan avisos en herramientas Firebase CLI transitivas. No se forzaron versiones
+  mayores incompatibles para obtener artificialmente un audit sin alertas.
+
+## Repetir las verificaciones
 
 ```bash
 npm ci
-npm run serve                 # mantener en otra terminal
+npm ci --prefix functions
 npm run check
-npm run test:rules            # necesita Java 21
-npx playwright install --with-deps chromium
+npm run test:rules       # Java 21; proyecto demo-kryofix
+npm run test:backend     # Auth/Firestore/Storage/Functions, solo emuladores demo
+npx playwright install --with-deps chromium webkit
+npm run serve           # otra terminal; CI lo inicia automáticamente
 npm run test:browser
 npm audit
+npm audit --prefix functions
 ```
 
-`npm run check:full` enlaza las tres capas y devuelve error si falla cualquiera.
-En CI se inicia el servidor de Playwright automáticamente. Resultados, trazas y
-credenciales temporales están excluidos de Git; no se versionaron binarios de Java
-ni Chromium ni datos reales.
+`npm run check:full` enlaza las capas de pruebas. Secretos de emuladores, resultados,
+binarios de navegador y dependencias no se versionan. No se pidieron contraseñas,
+tokens o cuentas de servicio en el chat.

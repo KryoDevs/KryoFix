@@ -92,7 +92,7 @@ test('error de proveedor programa reintento y luego corta tras cinco intentos', 
     await c.b.consentimiento('ana', 'a', true, 'Permiso en recepción');
     const r = await c.b.encolar('ana', 'a', 'retiro', 'op');
     for (let i = 0; i < 5; i++) { await c.b.procesarMensaje(r.id); c.avanzar(3600001); }
-    assert.equal(c.db._datos.get('colaMensajes').get(r.id).estado, 'fallido');
+    assert.equal(c.db._datos.get('colaMensajes').get(r.id).estado, 'revision-manual');
 });
 test('métricas separan saldo y pagos por mes de Santiago, sin inventar cobros de apertura', () => {
     const ahora = Date.UTC(2026, 9, 6, 12);
@@ -115,4 +115,20 @@ test('no se extiende retención ni reemplaza un archivo mientras se está elimin
     await assert.rejects(c.b.migrarArchivo('ana', 'a', 'evidencia'), { status: 409 });
     assert.equal(c.p().evidencia, png);
     await assert.rejects(c.b.leerArchivo('ana', 'a', 'evidencia'), { status: 404 });
+});
+
+
+test('callback temprano o después de respuesta perdida no se degrada a aceptado/reintento', async () => {
+    for (const perderRespuesta of [false, true]) {
+        let c;
+        c = entorno({ estado: 'reparado' }, { habilitarEnvios: true, proveedor: async datos => {
+            await c.b.confirmarMensaje(datos.idempotencyKey, 'p-temprano', 'entregado');
+            if (perderRespuesta) throw new Error('Se perdió la respuesta HTTP');
+            return { id: 'p-temprano' };
+        } });
+        await c.b.consentimiento('ana', 'a', true, 'Permiso en recepción');
+        const r = await c.b.encolar('ana', 'a', 'retiro', 'op');
+        await c.b.procesarMensaje(r.id);
+        assert.equal(c.db._datos.get('colaMensajes').get(r.id).estado, 'entregado');
+    }
 });

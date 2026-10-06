@@ -189,7 +189,7 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             const valido = permiso.exists && permiso.data().aceptado && telefonoDe(p) === m.telefono &&
                 ({ retiro: p.estado === 'reparado', repuesto: p.estado === 'repuesto', presupuesto: p.presupuesto?.autorizacion.estado === 'pendiente', garantia: p.garantia?.estado === 'abierta' }[m.tipo]);
             if (!valido || m.intentos >= 5) {
-                const estado = valido ? 'fallido' : 'cancelado';
+                const estado = valido ? 'revision-manual' : 'cancelado';
                 tx.update(ref, { estado }); tx.update(privado(m.uid, 'mensajes', id), { estado, actualizado: stamp() }); return null;
             }
             tx.update(ref, { estado: 'procesando', lease, leaseHasta: ahora() + 120000, intentos: m.intentos + 1 });
@@ -202,15 +202,15 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
             if (!r || typeof r.id !== 'string' || !r.id) throw new Error('Respuesta inválida del proveedor');
             await db.runTransaction(async tx => {
                 const actual = await tx.get(ref);
-                if (actual.data().lease !== lease) return;
+                if (actual.data().lease !== lease || ['entregado', 'fallido'].includes(actual.data().estado)) return;
                 tx.update(ref, { estado: 'aceptado', proveedorId: r.id, leaseHasta: 0, actualizado: stamp() });
                 tx.update(privado(trabajo.uid, 'mensajes', id), { estado: 'aceptado', proveedorId: r.id, actualizado: stamp() });
             });
             return { enviado: true };
         } catch (_e) {
             await db.runTransaction(async tx => {
-                const actual = await tx.get(ref); if (actual.data().lease !== lease) return;
-                const estado = actual.data().intentos >= 5 ? 'fallido' : 'reintento';
+                const actual = await tx.get(ref); if (actual.data().lease !== lease || ['entregado', 'fallido'].includes(actual.data().estado)) return;
+                const estado = actual.data().intentos >= 5 ? 'revision-manual' : 'reintento';
                 tx.update(ref, { estado, leaseHasta: 0, siguiente: ahora() + Math.min(3600000, 60000 * 2 ** actual.data().intentos) });
                 tx.update(privado(trabajo.uid, 'mensajes', id), { estado, actualizado: stamp() });
             }); return { enviado: false };
@@ -220,10 +220,11 @@ export function crearBackend({ db, stamp, ahora = Date.now, bucket, proveedor, h
         if (!['entregado', 'fallido'].includes(estado)) fallo(400, 'Estado de entrega inválido.');
         await db.runTransaction(async tx => {
             const ref = doc('colaMensajes', id), snap = await tx.get(ref);
-            if (!snap.exists || snap.data().proveedorId !== proveedorId) fallo(409, 'Confirmación no corresponde al mensaje.');
+            if (!snap.exists || typeof proveedorId !== 'string' || !proveedorId || proveedorId.length > 200) fallo(409, 'Confirmación no corresponde al mensaje.');
             const m = snap.data();
+            if (!m.intentos || (m.proveedorId && m.proveedorId !== proveedorId)) fallo(409, 'Confirmación no corresponde al mensaje.');
             if (m.estado === 'entregado') return; // Una confirmación tardía no revierte entrega.
-            tx.update(ref, { estado, actualizado: stamp() }); tx.update(privado(m.uid, 'mensajes', id), { estado, actualizado: stamp() });
+            tx.update(ref, { estado, proveedorId, actualizado: stamp() }); tx.update(privado(m.uid, 'mensajes', id), { estado, proveedorId, actualizado: stamp() });
         }); return { confirmado: true };
     }
     async function calcularMetricas(uid) {
