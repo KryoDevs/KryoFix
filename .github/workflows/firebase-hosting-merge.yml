@@ -13,15 +13,15 @@ jobs:
     needs: verificar
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run check
       - name: Credenciales para reglas e índices (solo al integrar en main)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_TECHFIX_TRACKER_9A128 }}'
       - name: Publicar reglas e índices antes del nuevo cliente

@@ -400,3 +400,12 @@ export function montarApp({
 
 /** Deja correr microtareas pendientes. */
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+/** Espera una condición observable, no una duración supuesta de la operación. */
+export async function esperarHasta(condicion, timeout = 2000) {
+    const inicio = Date.now();
+    while (!condicion()) {
+        if (Date.now() - inicio >= timeout) throw new Error('La condición esperada no se cumplió dentro del plazo');
+        await tick(5);
+    }
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { montarApp, tick } from './helpers/entorno.mjs';
+import { montarApp, tick, esperarHasta } from './helpers/entorno.mjs';
 
 const usuario = { uid: 'tecnico', email: 'tecnico@test.cl' };
 const orden = { uid: usuario.uid, cliente: 'Ana', telefono: '56912345678', estado: 'reparado', costo: 10000, abono: 2000, pin: '1234', timestamp: 1 };
@@ -79,7 +79,7 @@ test('entrega borra PIN y solo registra pago con confirmacion explicita', async 
     canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 5, clientY: 5 }));
     canvas.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
     document.getElementById('btn-guardar-firma').click();
-    await tick();
+    await esperarHasta(() => db._datos.get('equipos').get('a').estado === 'entregado');
     const guardado = db._datos.get('equipos').get('a');
     assert.equal(guardado.pin, '');
     assert.equal(guardado.abono, 10000);
