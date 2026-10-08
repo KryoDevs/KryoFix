@@ -119,6 +119,12 @@
 
     const loginScreen = $('login-screen');
     const appContent = $('app-content');
+    if (SPARK) {
+        const aviso = document.createElement('p');
+        aviso.className = 'texto-ayuda aviso-spark';
+        aviso.textContent = 'Spark sin facturación · Este panel, sus filtros, cifras y CSV usan hasta las 100 órdenes más recientes. Para órdenes anteriores: Gestión del taller → Historial. Para un informe más amplio: Informes. Las cuotas gratuitas no son ilimitadas.';
+        appContent.prepend(aviso);
+    }
     const loginForm = $('login-form');
     const btnLogout = $('btn-logout');
     const btnTheme = $('btn-theme');

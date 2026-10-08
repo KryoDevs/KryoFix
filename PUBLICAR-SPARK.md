@@ -32,6 +32,10 @@ Los controles de esas funciones no aparecen en Spark y las llamadas API se bloqu
 8. Entra con el correo y contraseña del usuario del taller. Los otros UID quedan
    bloqueados por las reglas, aunque puedan autenticarse.
 
+Si Firebase ya estaba conectado a otra cuenta Google, ejecuta en esa carpeta
+`npx --yes firebase-tools@15.32.1 login --reauth` y elige la cuenta propietaria antes
+de repetir la publicación. No compartas el resultado de la autenticación en chat.
+
 Si Windows muestra que no existe `node`, instala Node, cierra la ventana y vuelve
 al paso 4. En macOS/Linux: abre terminal en la carpeta extraída y ejecuta
 `node publicar-spark.mjs`.

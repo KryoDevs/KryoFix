@@ -162,3 +162,34 @@ configuración privada en la web, cuenta de servicio incorrecta y envíos activo
   solicita ningún secreto en chat ni se reutiliza la cuenta productiva.
 - El workflow nuevo no se presenta como ejecutado; requiere proyecto/secretos y
   disponibilidad de `workflow_dispatch` en la rama predeterminada.
+
+## Edición Spark del taller — actualización actual
+
+La adaptación gratuita está implementada en el código; sustituye el estado
+anterior de «solo emuladores». No constituye una publicación real ya realizada.
+
+- **181 pruebas locales** aprobadas (lint y auditoría estática incluidos).
+- Se repite la suite de Firestore con las reglas Spark: **13 escenarios**, que
+  incluyen UID exclusivo, límites de imágenes del lado del servidor y entrega
+  completa tras autorización, pago y calidad, sin Functions.
+- La primera pasada CI de esta adaptación aprobó Node, las 10 pruebas de reglas
+  originales, las 13 Spark y las 4 integradas de backend opcional. Falló una
+  prueba antigua de aprobación porque seguía esperando backend en modo Spark.
+  Se corrigió el perfil de esa prueba y se añadió la comprobación explícita de
+  que Spark rechaza incluso un enlace válido sin llamar `/api`.
+- Matriz actual: **18 casos × 5 perfiles**, más repetición doble de WebKit.
+  Se comprueba ausencia de llamadas `/api` en Spark; solo una prueba marcada
+  explícitamente como backend opcional usa su API simulada.
+- Paquete generado: `.spark/`, Hosting + Firestore únicamente. QR de respaldo
+  corregido a `kryofix.web.app`; modo PWA permite orientación horizontal.
+- Publicador local: pide UID (no contraseña) y autenticación Google por Firebase
+  CLI; no activa billing ni despliega Functions/Storage. Se comprueba el perfil
+  del paquete antes de intentar autenticar/desplegar.
+- Copia JSON privada por orden con pagos/eventos; no reemplaza un respaldo global
+  ni ofrece restauración automática. Datos sensibles deben guardarse protegidos.
+- `firebase projects:list` sigue devolviendo falta de autenticación en este
+  entorno. **No se publicó, no se probó el sitio real y no se migraron datos**.
+- La CI del commit vigente se consulta en el PR #5. No interpretar los conteos de
+  la matriz como evidencia de hardware físico ni del despliegue real.
+
+Guía activa y entrega para el propietario: `PUBLICAR-SPARK.md`.

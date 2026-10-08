@@ -80,3 +80,11 @@ test('paquete personalizado rechaza otro usuario antes de cargar datos del talle
     assert.equal(c.db._oyentes.length, 0);
     assert.ok(c.swal.llamadas.some(x => x.title === 'Cuenta no autorizada'));
 });
+
+
+test('Spark anuncia alcance del panel y rechaza listados excesivos sin totales parciales', async t => {
+    const c = await iniciar(t);
+    assert.match(c.document.querySelector('.aviso-spark').textContent, /100 órdenes más recientes/);
+    c.db._datos.set('usuarios/ana/pagos', new Map(Array.from({ length: 2001 }, (_, i) => [String(i), { monto: 1 }])));
+    await assert.rejects(c.window.TechFix.tallerServicio.listar(uid, 'pagos'), { code: 'limite-consulta' });
+});
