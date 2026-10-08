@@ -2,6 +2,7 @@ import { before, after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import { reglasSpark } from '../../tools/spark-reglas.mjs';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
@@ -13,6 +14,8 @@ await import('../../app/taller-servicio.js');
 await import('../../app/borradores.js');
 await import('../../app/ordenes-repositorio.js');
 let entorno;
+const spark = process.env.KRYOFIX_PRUEBAS_SPARK === 'true';
+if (spark) globalThis.KryoFixEntorno = { modo: 'spark' };
 const base = { uid: 'ana', cliente: 'Cliente', telefono: '56912345678', equipo: 'Apple', modelo: 'iPhone 13',
     estado: 'ingresado', costo: 50000, abono: 0, timestamp: 1, schemaVersion: 2, revisionOrden: 0, idOrden: 'KRF-000001', numeroOrden: 1 };
 const serverTime = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -20,7 +23,8 @@ const db = uid => entorno.authenticatedContext(uid).firestore();
 const servicio = uid => globalThis.KryoFixTallerServicio.crear({ db: db(uid), usuario: () => ({ uid }), enLinea: () => true, timestampServidor: serverTime });
 before(async () => {
     if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Usa npm run test:rules. Nunca ejecutar estas pruebas contra producción.');
-    entorno = await initializeTestEnvironment({ projectId: 'demo-kryofix', firestore: { rules: readFileSync(new URL('../../firestore.rules', import.meta.url), 'utf8') } });
+    const fuente = readFileSync(new URL('../../firestore.rules', import.meta.url), 'utf8');
+    entorno = await initializeTestEnvironment({ projectId: 'demo-kryofix', firestore: { rules: spark ? reglasSpark(fuente, 'ana') : fuente } });
 });
 beforeEach(async () => {
     await entorno.clearFirestore();
@@ -153,12 +157,41 @@ test('compra, recepción, ajustes y devolución atómicos con diario inmutable',
 
 test('garantía genera nueva orden enlazada sin alterar entrega/pagos y rechaza origen ajeno', async () => {
     const s = servicio('ana');
-    await entorno.withSecurityRulesDisabled(c => c.firestore().doc('equipos/a').update({ estado: 'entregado', abono: 50000, firmaCliente: 'firma-original' }));
+    await entorno.withSecurityRulesDisabled(c => c.firestore().doc('equipos/a').update({ estado: 'entregado', abono: 50000, firmaCliente: 'data:image/jpeg;base64,ZmlybWEtb3JpZ2luYWw=' }));
     await s.crearRetrabajo('ana', 'a', 0, 'La pantalla volvió a fallar', 'hija');
     await s.crearRetrabajo('ana', 'a', 0, 'La pantalla volvió a fallar', 'hija');
     const padre = await s.leerOrden('ana', 'a'), hija = await s.leerOrden('ana', 'hija');
-    assert.equal(padre.estado, 'entregado'); assert.equal(padre.abono, 50000); assert.equal(padre.firmaCliente, 'firma-original');
+    assert.equal(padre.estado, 'entregado'); assert.equal(padre.abono, 50000); assert.equal(padre.firmaCliente, 'data:image/jpeg;base64,ZmlybWEtb3JpZ2luYWw=');
     assert.equal(hija.origenGarantia, 'a'); assert.equal(hija.idOrden, 'KRF-000002');
     await assertFails(db('otro').doc('equipos/hija').get());
     await assertFails(db('ana').doc('equipos/falsa').set({ ...base, schemaVersion: 1, origenGarantia: 'ajena' }));
 });
+
+
+if (spark) {
+    test('Spark niega cuentas extra incluso al crear sus propios datos', async () => {
+        await assertFails(db('intruso').doc('equipos/propia').set({ ...base, uid: 'intruso', schemaVersion: 1 }));
+        await assertFails(db('intruso').doc('usuarios/intruso/config/numeracion').set({ numero: 1 }));
+    });
+    test('Spark limita fotos y firmas también al omitir el servicio', async () => {
+        const img = 'data:image/jpeg;base64,';
+        await assertSucceeds(db('ana').doc('equipos/ligera').set({ ...base, schemaVersion: 1, evidencia: img + 'A'.repeat(81920 - img.length) }));
+        await assertFails(db('ana').doc('equipos/pesada').set({ ...base, schemaVersion: 1, evidencia: img + 'A'.repeat(81921 - img.length) }));
+        await assertFails(db('ana').doc('equipos/firma-pesada').set({ ...base, schemaVersion: 1, firmaCliente: img + 'A'.repeat(32769 - img.length) }));
+        await assertFails(db('ana').doc('equipos/formato').set({ ...base, schemaVersion: 1, evidencia: 'data:text/html;base64,AAAA' }));
+        await assertFails(db('ana').doc('equipos/ligera').update({ evidencia: img + 'A'.repeat(81921) }));
+    });
+    test('Spark completa presupuesto, autorización, pago, calidad y entrega sin backend', async () => {
+        const s = servicio('ana'); let revision = 0;
+        const op = (accion, datos) => s.ejecutar({ uid: 'ana', id: 'a', revision: revision++, opId: accion + '-' + revision, accion, datos });
+        await op('presupuestar', { lineas: [{ concepto: 'Reparación', cantidad: 1, precio: 50000 }] });
+        await op('autorizar', { version: 1, estado: 'aprobado', medio: 'presencial', evidencia: 'Cliente autorizó presencialmente' });
+        await op('pago', { monto: 50000, medio: 'efectivo' });
+        await op('calidad', { pantalla: 'correcto', carga: 'correcto', audio: 'correcto', camaras: 'correcto', conectividad: 'correcto' });
+        await op('estado', { estado: 'revision' });
+        await op('estado', { estado: 'reparado' });
+        await op('entregar', { firma: 'data:image/jpeg;base64,ZmlybWEtb3JpZ2luYWw=', saldar: false, excepcion: '' });
+        const orden = await s.leerOrden('ana', 'a');
+        assert.equal(orden.estado, 'entregado'); assert.equal(orden.abono, 50000); assert.equal(orden.pin, '');
+    });
+}

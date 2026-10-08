@@ -19,6 +19,7 @@ function montarStatus({ id = 'abc123', semilla = {} } = {}) {
     const { window } = dom;
     const db = crearFirestoreFalso(semilla);
     window.firebase = { initializeApp: () => ({}), firestore: () => db };
+    window.KryoFixEntorno = { firebase: { projectId: 'demo-kryofix' }, modo: 'spark' };
     window.eval(leer('app/dominio.js'));
     window.eval(leer('app/status.js'));
     return { window, document: window.document, db };

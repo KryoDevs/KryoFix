@@ -10,6 +10,7 @@ jobs:
   verificar:
     uses: ./.github/workflows/verificacion.yml
   build_and_deploy:
+    if: ${{ false }} # No publicar backend facturable ni en el proyecto anterior.
     needs: verificar
     runs-on: ubuntu-latest
     steps:

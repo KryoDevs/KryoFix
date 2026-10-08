@@ -394,6 +394,7 @@ export function montarApp({
     window.eval(leer('app/taller-dominio.js'));
     window.eval(leer('app/taller-servicio.js'));
     window.eval(leer('app/ficha.js'));
+    window.KryoFixEntorno = { modo: 'completo', firebase: { projectId: 'demo-kryofix' } };
     antesDeIniciar(window);
     window.eval(leer(script));
 

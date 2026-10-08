@@ -20,14 +20,7 @@
     // CONFIGURACION DE FIREBASE
     // (la apiKey web no es un secreto: la proteccion real son firestore.rules)
     // ========================
-    const firebaseConfig = window.KryoFixEntorno?.firebase || {
-        apiKey: 'AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8',
-        authDomain: 'techfix-tracker-9a128.firebaseapp.com',
-        projectId: 'techfix-tracker-9a128',
-        storageBucket: 'techfix-tracker-9a128.firebasestorage.app',
-        messagingSenderId: '434780023940',
-        appId: '1:434780023940:web:e595dc76ac51d865a7a6d1'
-    };
+    const firebaseConfig = window.KryoFixEntorno?.firebase;
 
     const COL_EQUIPOS = 'equipos';
     const COL_CATALOGO = 'catalogo';
@@ -35,7 +28,8 @@
 
     // Tope de documentos que se mantienen en memoria (la lista se filtra en el
     // cliente). Con mas de 500 ordenes historicas hace falta paginacion real.
-    const LIMITE_EQUIPOS = 500;
+    const SPARK = window.KryoFixEntorno?.modo === 'spark';
+    const LIMITE_EQUIPOS = SPARK ? 100 : 500;
 
     // Dias que un equipo listo puede esperar al cliente antes de avisar.
     const PLAZO_ENTREGA_DIAS = 30;
@@ -80,6 +74,7 @@
 
     function dependenciasFaltantes() {
         const faltantes = [];
+        if (!firebaseConfig?.projectId) faltantes.push('Configuración del taller');
         if (typeof firebase === 'undefined') faltantes.push('Firebase');
         if (typeof Swal === 'undefined') faltantes.push('SweetAlert2');
         if (!window.TechFixDominio) faltantes.push('Dominio');
@@ -182,6 +177,7 @@
         procedimientoPendiente: p => borradores.obtener(p.id, p.procedimiento).sucio, alCerrar: () => { window.history.replaceState(null, '', window.location.pathname + window.location.search); renderizarProyectos(); },
         urlSeguimiento });
     async function migrarArchivoNuevo(id, tipo, uid, epoca) {
+        if (SPARK) return; // La evidencia limitada permanece privada en Firestore.
         if (!currentUser?.getIdToken || currentUser.uid !== uid || epocaSesion !== epoca) return;
         try {
             const capacidad = await tallerServicio.remoto('capacidades');
@@ -254,8 +250,9 @@
         Swal.fire(
             titulo,
             esPermiso
-                ? 'No tienes permiso para esta operacion. Revisa firestore.rules.'
-                : 'Ocurrio un problema. Revisa tu conexion e intentalo de nuevo.',
+                ? 'Cuenta no autorizada o reglas pendientes. Comprueba que se publicaron las reglas con el UID de tu usuario del taller.'
+                : err?.code === 'resource-exhausted' ? 'Se alcanzó una cuota de Firebase. No actives facturación: revisa Uso en la consola y espera el restablecimiento de la cuota aplicable.'
+                : (err?.message || 'Ocurrió un problema. Revisa tu conexión e inténtalo de nuevo.'),
             'error'
         );
     }
@@ -442,13 +439,21 @@
         // dispara mas de una vez (refresco de token, reconexion, etc.).
         cancelarSuscripciones();
 
+        if (user && window.KryoFixEntorno?.propietarioUid && user.uid !== window.KryoFixEntorno.propietarioUid) {
+            currentUser = null;
+            limpiarSesionEnPantalla();
+            loginScreen.style.display = 'flex'; appContent.style.display = 'none';
+            auth.signOut().catch(() => {});
+            Swal.fire('Cuenta no autorizada', 'Inicia sesión con el usuario del taller cuyo UID se configuró al publicar. No se consultaron sus datos.', 'warning');
+            return;
+        }
         if (user) {
             const mismoUsuario = currentUser && currentUser.uid === user.uid;
             if (!mismoUsuario) limpiarSesionEnPantalla();
             currentUser = user;
             loginScreen.style.display = 'none';
             appContent.style.display = 'block';
-            if (userEmailDisplay) userEmailDisplay.textContent = user.email;
+            if (userEmailDisplay) userEmailDisplay.textContent = user.email + (SPARK ? ' · Spark: sin facturación' : '');
             cargarDatos();
             cargarCatalogo();
             if (!mismoUsuario) {
@@ -1027,7 +1032,7 @@
     // ========================
     // Limite de Firestore: 1 MiB por documento. Aqui se reserva un margen para
     // los demas campos; la solucion de fondo es mover las fotos a Storage.
-    const MAX_FOTO_BYTES = 200 * 1024;
+    const MAX_FOTO_BYTES = (SPARK ? 80 : 200) * 1024;
 
     escuchar('foto-evidencia', 'change', function (e) {
         const seleccion = ++seleccionFoto;
@@ -2031,6 +2036,7 @@
             tctx.fillRect(0, 0, t.width, t.height);
             tctx.drawImage(canvas, 0, 0, t.width, t.height);
             const dataUrl = t.toDataURL('image/jpeg', 0.5);
+            if (SPARK && pesoEnBytes(dataUrl) > 32 * 1024) throw new Error('La firma supera 32 KiB. Limpia el lienzo y vuelve a firmar.');
 
             if (!currentUser) return;
             const idFirmado = currentFirmaId;

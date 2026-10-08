@@ -2,6 +2,7 @@
 (function () {
     'use strict';
     const D = () => window.KryoFixTallerDominio;
+    const spark = () => window.KryoFixEntorno?.modo === 'spark';
     let campoNumero = 0;
     function nodo(tag, texto, clase) {
         const n = document.createElement(tag);
@@ -130,6 +131,25 @@
                 if (ocupado || !await confirmarDescarte()) return;
                 const id = orden.id; sucio = false; await abrir(id);
             }));
+            if (orden) cuerpo.appendChild(boton('Descargar copia privada de esta orden (JSON)', async () => {
+                if (ocupado) return;
+                ocupado = true;
+                const uid = usuario().uid, id = orden.id;
+                try {
+                    const actual = await servicio.leerOrden(uid, id);
+                    const [pagos, eventos] = await Promise.all([servicio.listar(uid, 'pagos', id), servicio.listar(uid, 'eventos', id)]);
+                    const despues = await servicio.leerOrden(uid, id);
+                    if (!vigente(t)) return;
+                    if (JSON.stringify(actual) !== JSON.stringify(despues)) throw new Error('La orden cambió durante la copia. Reintenta sin editarla en otra sesión.');
+                    const copia = { formato: 'kryofix-orden-v1', exportado: new Date().toISOString(), orden: actual, pagos, eventos };
+                    const blob = new Blob([JSON.stringify(copia, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob), a = nodo('a');
+                    a.href = url; a.download = 'KryoFix-orden-' + id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) + '.json';
+                    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    aviso.textContent = 'Copia solicitada: comprueba la descarga. Contiene datos privados, fotos, firma y posiblemente PIN. Guárdala protegida. No incluye todo el inventario ni restauración automática.';
+                } catch (e) { if (vigente(t)) aviso.textContent = e.message; }
+                finally { if (vigente(t)) ocupado = false; }
+            }));
             try {
                 if (!orden) { await herramientas(t); return; }
                 if (seccion === 'Resumen') {
@@ -210,8 +230,8 @@
                         campo(a, 'estado', 'Decisión recibida', { opciones: [['aprobado', 'Aprobado'], ['rechazado', 'Rechazado']] });
                         campo(a, 'medio', 'Medio', { opciones: [['presencial', 'Presencial'], ['whatsapp', 'WhatsApp'], ['telefono', 'Teléfono']] });
                         campo(a, 'evidencia', 'Referencia de la autorización: quién, fecha, conversación o documento', { multilinea: true, requerido: true }); a.finalizar();
-                        info('El registro anterior es manual. El enlace protegido permite otra vía: válido 48 horas, para esta versión, de un solo uso. No verifica identidad legal ni equivale a firma electrónica avanzada.');
-                        if (p.autorizacion.estado === 'pendiente') {
+                        if (!spark()) info('El registro anterior es manual. El enlace protegido permite otra vía: válido 48 horas, para esta versión, de un solo uso. No verifica identidad legal ni equivale a firma electrónica avanzada.');
+                        if (!spark() && p.autorizacion.estado === 'pendiente') {
                             const enlace = formulario('Generar enlace protegido para el cliente', async () => {
                                 const r = await servicio.remoto('emitir-enlace', { id: orden.id });
                                 if (!vigente(t)) return;
@@ -261,11 +281,12 @@
                         campo(f, 'accion', 'Movimiento', { opciones: [['consumir', 'Consumir: instalado en la reparación'], ['liberar', 'Liberar: devolver al disponible']] }); f.finalizar();
                     }
                 } else if (seccion === 'Evidencias') {
-                    info('Archivos privados: sin URL pública permanente. La migración verifica SHA-256 antes de retirar el base64 de Firestore; si falla conserva el original. Requiere backend y bucket configurados.');
+                    if (spark()) info('Spark: una foto de recepción de hasta 80 KiB y una firma de hasta 32 KiB, privadas dentro de la orden en Firestore. Consumen la cuota gratuita; no hay Storage, retención automática ni archivos ilimitados.');
+                    else info('Archivos privados: sin URL pública permanente. La migración verifica SHA-256 antes de retirar el base64 de Firestore; si falla conserva el original. Requiere backend y bucket configurados.');
                     for (const tipo of ['evidencia', 'firmaCliente']) {
                         const a = orden.archivos?.[tipo];
                         if (a?.borrado) info(tipo + ': eliminado por la política de retención confirmada.');
-                        else if (a || orden[tipo]) cuerpo.appendChild(boton('Ver ' + tipo, async () => {
+                        else if ((!spark() && a) || orden[tipo]) cuerpo.appendChild(boton('Ver ' + tipo, async () => {
                             try {
                                 const dataUrl = orden[tipo] || (await servicio.remoto('leer-archivo', { id: orden.id, tipo })).dataUrl;
                                 if (!vigente(t)) return;
@@ -274,11 +295,11 @@
                         }));
                     }
                     const pendientes = ['evidencia', 'firmaCliente'].filter(k => orden[k]);
-                    if (pendientes.length) {
+                    if (!spark() && pendientes.length) {
                         const f = formulario('Migrar archivo a Storage privado', d => servicio.remoto('migrar-archivo', { id: orden.id, tipo: d.tipo }));
                         campo(f, 'tipo', 'Archivo a migrar', { opciones: pendientes.map(k => [k, k]) }); f.finalizar();
                     }
-                    if (orden.archivos) {
+                    if (!spark() && orden.archivos) {
                         info('Por defecto se conservan indefinidamente. Confirma una política solo tras revisar tus obligaciones legales y respaldos. El borrado programado es irreversible y se registra en el historial.');
                         const f = formulario('Confirmar política de retención', d => servicio.remoto('retencion', { id: orden.id, dias: Number(d.dias), confirmar: d.confirmar === 'si' }));
                         campo(f, 'dias', 'Días de conservación desde hoy (90 a 3650)', { tipo: 'number', min: 90, valor: 365, requerido: true });
@@ -313,6 +334,7 @@
                     const f = formulario('Registrar contacto realizado', (d, op) => ejecutar('contacto', d, op));
                     campo(f, 'tipo', 'Motivo de contacto', { opciones: [['presupuesto', 'Presupuesto'], ['repuesto', 'Repuesto'], ['retiro', 'Retiro'], ['garantia', 'Garantía']] });
                     campo(f, 'resultado', 'Resultado / respuesta', { multilinea: true, requerido: true }); f.finalizar();
+                    if (!spark()) {
                     info('Mensajería automática: requiere proveedor configurado, consentimiento vigente y activación del taller. En cola o aceptado no significa entregado.');
                     const consentimiento = formulario('Guardar consentimiento o revocación', d => servicio.remoto('consentimiento', { id: orden.id, aceptado: d.aceptado === 'si', evidencia: d.evidencia }));
                     campo(consentimiento, 'aceptado', 'Permiso para mensajes de servicio a este teléfono', { opciones: [['no', 'Sin consentimiento / revocado'], ['si', 'Cliente autoriza mensajes de servicio']] });
@@ -321,6 +343,7 @@
                     campo(cola, 'tipo', 'Mensaje que se enviará si el estado sigue vigente', { opciones: [['retiro', 'Listo para retiro'], ['repuesto', 'Pendiente de repuesto'], ['presupuesto', 'Presupuesto pendiente'], ['garantia', 'Seguimiento de garantía']] }); cola.finalizar();
                     const mensajes = await servicio.listar(usuario().uid, 'mensajes', orden.id); if (!vigente(t)) return;
                     for (const m of mensajes) info('Mensaje ' + m.tipo + ': ' + m.estado);
+                    } else info('Spark: mensajes exclusivamente manuales. Registra la autorización del cliente antes de contactarlo; no hay cola automática.');
                     if (orden.ultimoContacto) info('Último contacto registrado: ' + new Date(orden.ultimoContacto.en).toLocaleString('es-CL'));
                 } else if (seccion === 'Historial') {
                     const eventos = await servicio.listar(usuario().uid, 'eventos', orden.id); if (!vigente(t)) return;
@@ -419,13 +442,15 @@
                     finally { cargando = false; cargar.disabled = false; }
                 }); cuerpo.appendChild(cargar); cargar.click();
             } else if (seccion === 'Informes') {
-                info('Lectura paginada de todas las órdenes de tu cuenta. Puede generar lecturas facturables. Es un informe operativo, no un corte contable atómico.');
+                info('Informe operativo de tu cuenta, no un corte contable atómico. Consume lecturas y transferencia de Firebase. En Spark: máximo 1000 órdenes y 2000 pagos por consulta; si se supera el límite se informa un error, nunca totales parciales. Evita repetir consultas innecesarias. Zona horaria America/Santiago.');
                 const resultado = nodo('div');
+                if (!spark()) {
                 const remoto = formulario('Calcular informe consistente en el servidor', async () => {
                     const r = await servicio.remoto('metricas');
                     if (!vigente(t)) return;
                     await window.Swal.fire({ target: dialogo, title: 'Corte del servidor · ' + r.periodo, text: r.ordenes + ' órdenes · ' + r.activas + ' activas · saldo ' + window.TechFixDominio.formatearCLP(r.saldo) + ' · pagos netos del mes ' + window.TechFixDominio.formatearCLP(r.netoMes) + ' · zona America/Santiago.' });
                 }); remoto.finalizar();
+                }
                 const calcular = boton('Consultar todas las órdenes y calcular', async () => {
                     if (ocupado) return;
                     ocupado = true; calcular.disabled = true;
@@ -434,13 +459,15 @@
                         while (!fin && vigente(t)) {
                             const pagina = await servicio.pagina(uid, cursor); if (!vigente(t)) return;
                             pagina.ordenes.forEach(p => todas.set(p.id, p)); cursor = pagina.cursor; fin = pagina.fin;
+                            if (spark() && todas.size > 1000) throw new Error('Más de 1000 órdenes: no se calculó un total parcial. Consulta el historial por páginas.');
                             aviso.textContent = 'Consultadas ' + todas.size + ' órdenes…';
                         }
                         const pagos = await servicio.listar(uid, 'pagos'); if (!vigente(t)) return;
                         const ordenes = [...todas.values()];
                         const saldo = ordenes.reduce((a, p) => a + D().resumenFinanciero(p).pendiente, 0);
                         const ahora = new Date();
-                        const netoMes = pagos.filter(p => { const f = D().fechaRegistro(p); return f.getMonth() === ahora.getMonth() && f.getFullYear() === ahora.getFullYear(); }).reduce((a, p) => a + p.monto, 0);
+                        const mes = f => new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit' }).format(f);
+                        const netoMes = pagos.filter(p => mes(D().fechaRegistro(p)) === mes(ahora)).reduce((a, p) => a + p.monto, 0);
                         resultado.replaceChildren(nodo('p', 'Órdenes consultadas: ' + todas.size), nodo('p', 'Saldo total por cobrar: ' + window.TechFixDominio.formatearCLP(saldo)),
                             nodo('p', 'Pagos netos registrados este mes (sin aperturas heredadas): ' + window.TechFixDominio.formatearCLP(netoMes)),
                             nodo('p', 'Garantías abiertas: ' + ordenes.filter(p => p.garantia?.estado === 'abierta').length));

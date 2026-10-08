@@ -2,6 +2,24 @@
 
 **Desarrollado por KryoDevs**, inspirado en Kryo / Mr Kryo.
 
+## Edición activa: taller real en Spark, sin facturación
+
+Ver **[PUBLICAR-SPARK.md](PUBLICAR-SPARK.md)**. `npm run build:spark` genera un
+paquete independiente de Hosting + Firestore, exclusivamente para `kryofix`.
+No utiliza Functions/Storage; las opciones que los requerían no aparecen en esta
+edición. WhatsApp y autorizaciones son manuales; fotos y firmas tienen límites.
+Las reglas del paquete restringen el acceso privado al UID del dueño del taller.
+La configuración raíz y los workflows legacy **no son el despliegue Spark**.
+Los despliegues automáticos legacy siguen bloqueados.
+
+El código preparado no equivale a un sitio ya publicado. Desde esta sesión no
+hay autenticación administrativa de Firebase: el propietario debe ejecutar el
+publicador local y comprobar una orden ficticia en el sitio real.
+
+Las secciones históricas siguientes incluyen capacidades opcionales de backend;
+no deben interpretarse como servicios activados o incluidos en Spark.
+
+
 PWA privada para recepción, diagnóstico, reparación y seguimiento de equipos.
 HTML/CSS/JavaScript modular sin bundler + Firebase Auth, Firestore y Hosting.
 

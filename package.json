@@ -17,7 +17,8 @@
     "test:rules": "firebase emulators:exec --project demo-kryofix --only firestore \"node --test tests/emulator/*.test.mjs\"",
     "test:browser": "playwright test",
     "check:full": "npm run check && npm run test:rules && npm run test:backend && npm run test:browser",
-    "test:backend": "node tools/preparar-emuladores.mjs && firebase emulators:exec --project demo-kryofix --only firestore,auth,storage,functions \"node --test tests/backend/*.test.mjs\""
+    "test:backend": "node tools/preparar-emuladores.mjs && firebase emulators:exec --project demo-kryofix --only firestore,auth,storage,functions \"node --test tests/backend/*.test.mjs\"",
+    "build:spark": "node tools/preparar-spark.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",

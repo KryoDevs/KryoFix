@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 import { crearFirestoreFalso, crearAuthFalso, aplicarSentinelas } from '../helpers/entorno.mjs';
 
+// Ningún flujo Spark debe depender de /api, incluso al guardar fotos o firmas.
+const llamadasApi = new WeakMap();
+test.beforeEach(async ({ page }) => {
+    const peticiones = []; llamadasApi.set(page, peticiones);
+    page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/api/')) peticiones.push(r.url()); });
+});
+test.afterEach(async ({ page }) => { expect(llamadasApi.get(page)).toEqual([]); });
+
 const base = { uid: 'tecnico', cliente: 'Cliente de prueba', telefono: '56912345678', equipo: 'Apple', modelo: 'iPhone 13',
     estado: 'ingresado', costo: 50000, abono: 0, timestamp: 1, schemaVersion: 2, revisionOrden: 0, idOrden: 'KRF-000001' };
 async function preparar(page) {
@@ -263,4 +271,34 @@ test('enlace inválido no muestra formulario ni consulta el backend', async ({ p
     await page.goto('/aprobacion.html#invalido');
     await expect(page.getByRole('status')).toContainText('Enlace incompleto o inválido');
     await expect(page.locator('#decision-presupuesto')).toBeHidden(); expect(solicitudes).toBe(0);
+});
+
+test('Spark muestra operaciones manuales y no controles que requieran Blaze', async ({ page }) => {
+    await preparar(page);
+    const d = await ficha(page, 'Evidencias');
+    await expect(d.locator('.ficha-cuerpo')).toContainText('80 KiB');
+    await expect(d.getByRole('button', { name: 'Migrar archivo a Storage privado' })).toHaveCount(0);
+    await d.getByRole('button', { name: 'Contacto', exact: true }).click();
+    await expect(d.getByRole('button', { name: 'Abrir mensaje en WhatsApp' })).toBeVisible();
+    await expect(d.getByRole('button', { name: 'Programar mensaje de servicio' })).toHaveCount(0);
+    await d.getByRole('button', { name: 'Cerrar ficha' }).click();
+    await page.getByRole('button', { name: 'Gestión del taller', exact: true }).click();
+    const gestion = page.getByRole('dialog', { name: 'Gestión del taller', exact: true });
+    await gestion.getByRole('button', { name: 'Informes', exact: true }).click();
+    await expect(gestion.getByRole('button', { name: 'Calcular informe consistente en el servidor' })).toHaveCount(0);
+    await expect(gestion.getByRole('button', { name: 'Consultar todas las órdenes y calcular' })).toBeVisible();
+});
+
+test('copia privada JSON descarga una orden con sus pagos y eventos', async ({ page }) => {
+    await preparar(page);
+    const d = await ficha(page);
+    const descarga = page.waitForEvent('download');
+    await d.getByRole('button', { name: 'Descargar copia privada de esta orden (JSON)' }).click();
+    const archivo = await descarga;
+    expect(archivo.suggestedFilename()).toBe('KryoFix-orden-a.json');
+    const { readFile } = await import('node:fs/promises');
+    const copia = JSON.parse(await readFile(await archivo.path(), 'utf8'));
+    expect(copia.formato).toBe('kryofix-orden-v1');
+    expect(copia.orden.cliente).toBe('Cliente de prueba');
+    expect(copia.pagos).toEqual([]); expect(copia.eventos).toEqual([]);
 });

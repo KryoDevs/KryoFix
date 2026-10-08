@@ -72,6 +72,7 @@
                     }
                     resultado = { parche: { reservas }, resumen, pago: null };
                 } else {
+                    if (window.KryoFixEntorno?.modo === 'spark' && accion === 'entregar' && (typeof datos.firma !== 'string' || datos.firma.length > 32 * 1024)) throw error('firma-grande', 'La firma debe ocupar como máximo 32 KiB.');
                     let originales = datos;
                     if (accion === 'plantilla') {
                         if (window.KryoFixBorradores.huella(p.procedimiento) !== datos.baseProcedimiento) throw error('conflicto', 'El procedimiento cambió; revisa la ficha antes de aplicar una plantilla.');
@@ -109,6 +110,7 @@
         }
         async function crearOrden(uid, orden, id = nuevoId()) {
             sesion(uid);
+            if (window.KryoFixEntorno?.modo === 'spark' && orden.evidencia && (typeof orden.evidencia !== 'string' || orden.evidencia.length > 80 * 1024)) throw error('imagen-grande', 'La foto debe ocupar como máximo 80 KiB comprimidos.');
             const firmaIngreso = await huella(Object.fromEntries(['cliente', 'telefono', 'equipo', 'modelo', 'imei', 'pin', 'accesorios', 'falla', 'costo', 'abono', 'estado', 'notas', 'prioridad', 'procedimiento', 'evidencia', 'clienteId'].map(k => [k, orden[k] ?? null])));
             const ref = db.collection('equipos').doc(id);
             const contador = privada(uid, 'config').doc('numeracion');
@@ -261,6 +263,10 @@
             });
         }
         async function remoto(ruta, datos = {}) {
+            if (window.KryoFixEntorno?.modo === 'spark') {
+                if (ruta === 'capacidades') return { storage: false, envios: false, aprobacion: false, metricas: false };
+                throw error('no-disponible-spark', 'Esta función de servidor no está disponible en Spark. Usa la operación manual del taller.');
+            }
             const u = usuario();
             if (!u) throw error('sesion-cambiada', 'Inicia sesión.');
             sesion(u.uid);
@@ -279,7 +285,9 @@
             sesion(uid);
             let consulta = privada(uid, coleccion);
             if (ordenId) consulta = consulta.where('ordenId', '==', ordenId);
+            if (window.KryoFixEntorno?.modo === 'spark') consulta = consulta.limit(2001);
             const snap = await consulta.get({ source: 'server' });
+            if (window.KryoFixEntorno?.modo === 'spark' && snap.size > 2000) throw error('limite-consulta', 'La consulta supera 2000 registros. No se muestra un resultado parcial; consulta por orden o exporta desde la consola.');
             sesion(uid);
             return snap.docs.map(d => ({ ...d.data(), id: d.id }));
         }

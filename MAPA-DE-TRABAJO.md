@@ -393,3 +393,21 @@ usuario de pruebas y Firestore. Storage exige Blaze según su captura. Eligió
 **seguir sin facturación**: se mantiene Spark, el despliegue cloud de staging
 queda bloqueado en código y se continúa con las suites de emuladores. No se
 activan Storage/Functions cloud ni mensajes. STAGING.md describe el camino activo.
+
+
+## 13. Edición Spark para uso real en el taller (estado actual)
+
+Se implementa la adaptación pedida, sin SaaS ni facturación: el flujo de órdenes,
+presupuestos/autorización manual, pagos, inventario/compras y garantías usa
+transacciones Firestore existentes, no Functions. El cliente Spark bloquea `/api`,
+retira sus controles de servidor y guarda evidencia limitada (80 KiB) y firma
+(32 KiB) dentro de la orden privada. Se añade copia JSON por orden con su diario.
+
+`npm run build:spark` produce Hosting + reglas/índices Firestore en `.spark/`.
+El publicador pide localmente el UID del técnico y la sesión Google del dueño;
+no pide claves en el chat y no publica Functions/Storage. Los despliegues legacy
+siguen bloqueados. El QR estático apunta a kryofix y la PWA permite rotación.
+
+No se declara publicado: sigue faltando la autorización administrativa externa y
+la comprobación del sitio real. Sigue vigente Spark, no hay cargos autorizados,
+mensajes automáticos ni migración de producción. Guía: PUBLICAR-SPARK.md.

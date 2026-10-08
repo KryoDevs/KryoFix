@@ -32,7 +32,7 @@ const require = createRequire(import.meta.url);
 // (el PNG) se versiona, igual que los iconos de la PWA.
 const qrcode = require('qrcode-generator');
 
-export const BASE_URL_POR_DEFECTO = 'https://techfix-tracker-9a128.web.app/';
+export const BASE_URL_POR_DEFECTO = 'https://kryofix.web.app/';
 export const RUTA_QR = 'app/ticket-qr.png';
 
 /** URL que codifica el QR (el tecnico la pega en la plantilla del ticket). */

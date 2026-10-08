@@ -1,5 +1,13 @@
 # KryoFix — pruebas sin facturación
 
+## Actualización: publicación real gratuita preparada
+
+El propietario aclaró que quiere usar KryoFix en su propio taller, no una demo.
+Se implementó un paquete Spark independiente: **[PUBLICAR-SPARK.md](PUBLICAR-SPARK.md)**.
+Sustituye al camino de «solo emuladores» descrito históricamente debajo: permite
+publicar Hosting y Firestore sin Functions/Storage, con autorización local del dueño.
+El workflow cloud antiguo sigue bloqueado. No se ha desplegado desde esta sesión.
+
 ## Decisión actual
 
 - Todavía no hay proveedor contratado/configurado.

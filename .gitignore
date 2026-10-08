@@ -30,3 +30,6 @@ gha-creds-*.json
 
 # Secretos de Functions y configuración exclusiva de emuladores
 .secret.local
+
+# Paquete generado de publicación sin facturación
+/.spark/

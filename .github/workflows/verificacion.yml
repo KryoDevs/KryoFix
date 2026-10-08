@@ -19,6 +19,10 @@ jobs:
       - run: npm run check
       - name: Seguridad y transacciones con emulador (nunca producción)
         run: node tools/ci-ejecutar.mjs npm run test:rules
+      - name: Mismo taller contra reglas Spark y UID exclusivo
+        env:
+          KRYOFIX_PRUEBAS_SPARK: 'true'
+        run: node tools/ci-ejecutar.mjs npm run test:rules
       - name: API, Auth y archivos privados contra emuladores
         run: node tools/ci-ejecutar.mjs npm run test:backend
       - run: npx playwright install --with-deps chromium webkit
@@ -26,6 +30,13 @@ jobs:
         run: node tools/ci-ejecutar.mjs npm run test:browser
       - name: Repetir WebKit para detectar carreras de arranque/PWA
         run: node tools/ci-ejecutar.mjs npm run test:browser -- --project=safari-tablet --repeat-each=2
+      - run: npm run build:spark
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KryoFix-Spark
+          path: .spark/
+          include-hidden-files: true
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

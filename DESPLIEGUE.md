@@ -1,5 +1,10 @@
 # KryoFix — activación y validación externa
 
+**Edición elegida para el taller: Spark.** La guía activa es
+[PUBLICAR-SPARK.md](PUBLICAR-SPARK.md), con paquete limitado a Hosting y Firestore.
+Este documento conserva instrucciones de backend opcional que **no deben
+aplicarse** a la edición sin facturación.
+
 **Este documento no es evidencia de un despliegue realizado.** El código se prueba
 contra emuladores y navegadores en CI. No se activaron servicios facturables, no se
 migraron datos productivos ni se enviaron mensajes a clientes durante esta sesión.

@@ -14,6 +14,7 @@
     function agregar(tag, texto) { const e = document.createElement(tag); e.textContent = texto; detalle.appendChild(e); }
     async function iniciar() {
         if (!/^[A-Za-z0-9_-]{43}$/.test(token)) { aviso.textContent = 'Enlace incompleto o inválido. Solicita uno nuevo al taller.'; return; }
+        if (window.KryoFixEntorno?.modo === 'spark') { aviso.textContent = 'Este taller registra la aprobación manualmente. Contacta al técnico para confirmar tu presupuesto.'; return; }
         try {
             const d = await solicitar(), p = d.presupuesto;
             agregar('h3', 'Versión ' + p.version + ' · Total ' + clp(p.total));
