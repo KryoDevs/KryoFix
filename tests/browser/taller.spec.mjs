@@ -3,11 +3,15 @@ import { crearFirestoreFalso, crearAuthFalso, aplicarSentinelas } from '../helpe
 
 // Ningún flujo Spark debe depender de /api, incluso al guardar fotos o firmas.
 const llamadasApi = new WeakMap();
+const perfilBackendOpcional = new WeakSet();
 test.beforeEach(async ({ page }) => {
     const peticiones = []; llamadasApi.set(page, peticiones);
     page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/api/')) peticiones.push(r.url()); });
 });
-test.afterEach(async ({ page }) => { expect(llamadasApi.get(page)).toEqual([]); });
+test.afterEach(async ({ page }) => {
+    if (perfilBackendOpcional.has(page)) expect(llamadasApi.get(page)).toHaveLength(2);
+    else expect(llamadasApi.get(page)).toEqual([]);
+});
 
 const base = { uid: 'tecnico', cliente: 'Cliente de prueba', telefono: '56912345678', equipo: 'Apple', modelo: 'iPhone 13',
     estado: 'ingresado', costo: 50000, abono: 0, timestamp: 1, schemaVersion: 2, revisionOrden: 0, idOrden: 'KRF-000001' };
@@ -239,7 +243,9 @@ test('viewport reducido por teclado mantiene formularios alcanzables y objetivos
     }
 });
 
-test('página de aprobación muestra texto seguro y confirma decisión sin login', async ({ page }) => {
+test('perfil backend opcional: aprobación muestra texto seguro y confirma decisión sin login', async ({ page }) => {
+    perfilBackendOpcional.add(page);
+    await page.route('**/entorno.js', route => route.fulfill({ contentType: 'application/javascript', body: 'window.KryoFixEntorno = {modo: "completo"};' }));
     const token = 'a'.repeat(43); let decisiones = 0;
     await page.route('**/api/aprobacion', async route => {
         const d = route.request().postDataJSON();
@@ -301,4 +307,11 @@ test('copia privada JSON descarga una orden con sus pagos y eventos', async ({ p
     expect(copia.formato).toBe('kryofix-orden-v1');
     expect(copia.orden.cliente).toBe('Cliente de prueba');
     expect(copia.pagos).toEqual([]); expect(copia.eventos).toEqual([]);
+});
+
+
+test('Spark rechaza incluso enlaces válidos de aprobación remota sin consultar API', async ({ page }) => {
+    await page.goto('/aprobacion.html#' + 'a'.repeat(43));
+    await expect(page.getByRole('status')).toContainText('registra la aprobación manualmente');
+    await expect(page.locator('#decision-presupuesto')).toBeHidden();
 });
