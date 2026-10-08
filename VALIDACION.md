@@ -168,7 +168,7 @@ configuración privada en la web, cuenta de servicio incorrecta y envíos activo
 La adaptación gratuita está implementada en el código; sustituye el estado
 anterior de «solo emuladores». No constituye una publicación real ya realizada.
 
-- **181 pruebas locales** aprobadas (lint y auditoría estática incluidos).
+- **184 pruebas locales** aprobadas (lint y auditoría estática incluidos).
 - Se repite la suite de Firestore con las reglas Spark: **13 escenarios**, que
   incluyen UID exclusivo, límites de imágenes del lado del servidor y entrega
   completa tras autorización, pago y calidad, sin Functions.
@@ -193,3 +193,7 @@ anterior de «solo emuladores». No constituye una publicación real ya realizad
   la matriz como evidencia de hardware físico ni del despliegue real.
 
 Guía activa y entrega para el propietario: `PUBLICAR-SPARK.md`.
+
+El publicador se prueba adicionalmente con CLI simulada: sitio Hosting existente,
+creación del sitio faltante dentro de `kryofix`, y rechazo de UID inválido antes
+de llamar a Firebase. Estas pruebas no autentican ni despliegan recursos reales.

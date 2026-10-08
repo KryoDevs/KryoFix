@@ -8,9 +8,10 @@ import { reglasSpark } from './spark-reglas.mjs';
 const cwd = fileURLToPath(new URL('.', import.meta.url));
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 try {
-    if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Instala Node.js 22 o superior antes de continuar.');
+    const [major, minor] = process.versions.node.split('.').map(Number);
+    if (!(major >= 22 || (major === 20 && minor >= 19))) throw new Error('Instala Node.js 22 o superior antes de continuar (también compatible con 20.19+).');
     const config = JSON.parse(readFileSync(resolve(cwd, 'firebase.json'), 'utf8'));
-    if (JSON.stringify(Object.keys(config).sort()) !== JSON.stringify(['firestore', 'hosting']) || config.hosting.public !== 'app' || config.hosting.rewrites?.length || config.hosting.site || config.hosting.target) throw new Error('Paquete no válido: solo se permite Hosting y Firestore, sin Functions ni Storage.');
+    if (JSON.stringify(Object.keys(config).sort()) !== JSON.stringify(['firestore', 'hosting']) || config.hosting.public !== 'app' || config.hosting.rewrites?.length || config.hosting.site !== 'kryofix' || config.hosting.target) throw new Error('Paquete no válido: solo se permite Hosting y Firestore, sin Functions ni Storage.');
     const archivo = resolve(cwd, 'app/entorno.js');
     const js = readFileSync(archivo, 'utf8');
     const entorno = JSON.parse(js.slice(js.indexOf('window.KryoFixEntorno = ') + 'window.KryoFixEntorno = '.length).trim().replace(/;$/, ''));
@@ -25,12 +26,21 @@ try {
     writeFileSync(resolve(cwd, 'firestore.rules'), reglas);
     writeFileSync(archivo, '/* Configuración WEB pública del taller. */\nwindow.KryoFixEntorno = ' + JSON.stringify({ ...entorno, propietarioUid: uid }) + ';\n');
     rl.close();
-    function firebase(args) {
+    function firebase(args, json = false) {
         // Argumentos fijos: ningún texto del usuario llega al shell de Windows.
-        const r = spawnSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['--yes', 'firebase-tools@15.32.1', ...args], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+        const r = spawnSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['--yes', 'firebase-tools@15.32.1', ...args], { cwd, stdio: json ? ['inherit', 'pipe', 'inherit'] : 'inherit', encoding: 'utf8', shell: process.platform === 'win32' });
         if (r.error || r.status !== 0) throw new Error('Firebase no completó el paso. No se confirmó la publicación. Revisa el mensaje anterior y reintenta.');
+        if (json) {
+            try { return JSON.parse(r.stdout); } catch (_e) { throw new Error('Firebase no devolvió información válida sobre Hosting. No se desplegó.'); }
+        }
     }
     firebase(['login']);
+    const listado = firebase(['hosting:sites:list', '--project', 'kryofix', '--json'], true);
+    if (listado.status !== 'success' || !Array.isArray(listado.result?.sites)) throw new Error('No se pudieron verificar los sitios del proyecto. No se desplegó.');
+    if (!listado.result.sites.some(s => s.name?.endsWith('/sites/kryofix'))) {
+        // Crear el sitio gratuito faltante, siempre dentro del proyecto autorizado.
+        firebase(['hosting:sites:create', 'kryofix', '--project', 'kryofix', '--non-interactive']);
+    }
     // No se crea ninguna cuenta de facturación, bucket, función ni tarea programada.
     firebase(['deploy', '--project', 'kryofix', '--config', 'firebase.json', '--only', 'firestore:rules,firestore:indexes,hosting', '--non-interactive']);
     console.log('Firebase terminó el despliegue. Abre https://kryofix.web.app y prueba una orden ficticia antes de cargar clientes reales.');

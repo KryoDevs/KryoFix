@@ -12,7 +12,7 @@ export function prepararSpark(salida = resolve(raiz, '.spark'), uid = '__CONFIGU
     const fuente = readFileSync(resolve(raiz, 'firestore.rules'), 'utf8');
     const reglas = reglasSpark(fuente, uid);
     const original = JSON.parse(readFileSync(resolve(raiz, 'firebase.json'), 'utf8'));
-    const hosting = { ...original.hosting, rewrites: [] };
+    const hosting = { ...original.hosting, site: 'kryofix', rewrites: [] };
     for (const regla of hosting.headers) for (const h of regla.headers) if (h.key === 'Content-Security-Policy') h.value = h.value.replace(/frame-src [^;]+/, 'frame-src https://kryofix.firebaseapp.com');
     const firebase = { firestore: { rules: 'firestore.rules', indexes: 'firestore.indexes.json' }, hosting };
     const indices = JSON.parse(readFileSync(resolve(raiz, 'firestore.indexes.json'), 'utf8'));

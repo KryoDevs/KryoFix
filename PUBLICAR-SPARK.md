@@ -40,7 +40,8 @@ Si Windows muestra que no existe `node`, instala Node, cierra la ventana y vuelv
 al paso 4. En macOS/Linux: abre terminal en la carpeta extraída y ejecuta
 `node publicar-spark.mjs`.
 
-El programa descarga Firebase CLI con npm, solicita autorización y ejecuta solo:
+El programa descarga Firebase CLI con npm, solicita autorización, verifica el
+sitio Hosting `kryofix` y lo crea en ese proyecto si falta. Después publica solo:
 `firebase deploy --project kryofix --only firestore:rules,firestore:indexes,hosting`.
 **No activa Blaze ni despliega Functions, Storage o Scheduler.** Si aparece una
 petición de facturación, detente y conserva el error; no la autorices.
