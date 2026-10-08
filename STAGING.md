@@ -1,35 +1,74 @@
-# Preparar KryoFix Staging — sin proveedor y sin mensajes
+# KryoFix — pruebas sin facturación
 
 ## Decisión actual
 
 - Todavía no hay proveedor contratado/configurado.
 - **Mensajes automáticos desactivados**, tanto en parámetros como en el workflow.
-- Preparar un proyecto de pruebas distinto de producción.
+- El propietario eligió **seguir sin facturación**, manteniendo Spark.
+- El workflow de despliegue cloud está deshabilitado en código; confirmar su
+  ejecución manual no puede activar los jobs. Requiere nueva autorización y
+  un cambio revisado para reactivarlo.
 - No copiar datos de clientes, no migrar producción y no activar facturación automáticamente.
 
 ## Estado real
 
-La configuración y el workflow están preparados en el repositorio. **No se creó ni
-se desplegó un proyecto Firebase de staging**: este entorno no tiene autenticación
-administrativa de Firebase (`projects:list` devuelve `Failed to authenticate`).
-La conexión GitHub permite guardar código/ejecutar CI, pero no permitió consultar
-las variables de Actions (`Resource not accessible by integration`). La configuración
+El propietario indicó el proyecto **`kryofix`**, registró su aplicación web y
+compartió la configuración pública. Está guardada separadamente en
+`config/staging.firebase.public.json`; no cambia el destino predeterminado de
+producción ni activa servicios. El bucket indicado es
+`kryofix.firebasestorage.app`; que figure en la configuración no demuestra que
+Storage esté aprovisionado o sus permisos configurados.
+
+**Todavía no se desplegó desde esta sesión ni se verificaron los recursos cloud.**
+Este entorno no tiene autenticación administrativa de Firebase (`projects:list`
+devolvió `Failed to authenticate`). La conexión GitHub permite guardar código y
+ver CI, pero no permitió consultar las variables de Actions. La configuración
 externa debe realizarla el propietario con permisos, sin compartir secretos por chat.
 
-## Próximo paso del propietario
+## Camino activo: emuladores, sin desplegar servicios facturables
 
-1. Entrar en [Firebase Console](https://console.firebase.google.com/) y crear un
-   proyecto **nuevo**, por ejemplo `kryofix-staging-9a128` si ese ID está disponible.
-   El nombre sugerido no está reservado ni se comprobó su disponibilidad.
-2. Compartir **solo el ID del proyecto** para continuar. No enviar contraseñas,
-   tokens, claves privadas ni JSON de cuentas de servicio.
-3. Revisar/autorizar aparte el plan y los posibles costos de Functions, Storage y
-   Scheduler antes de desplegar. Si no se autoriza facturación, conservar las
-   pruebas en emuladores: no declarar disponibles los servicios cloud.
+El propietario confirmó que habilitó Authentication, creó un usuario de pruebas y
+creó Firestore. La captura de Storage muestra **Spark** y la exigencia de actualizar
+a Blaze. No se creó Storage ni se autorizó esa actualización. Se conservan el
+proyecto `kryofix` y su configuración pública, sin pedir más credenciales.
+
+**No hay más pasos en Firebase por ahora.** No pulsar «Actualizar proyecto»,
+no vincular una tarjeta y no ejecutar los comandos cloud de las secciones de
+referencia que siguen.
+
+Las pruebas existentes utilizan `demo-kryofix`, con Auth, Firestore, Storage y
+Functions emulados, datos ficticios y secretos de prueba. No necesitan activar
+facturación de Firebase ni desplegar en `kryofix`:
+
+```bash
+npm ci
+npm ci --prefix functions
+npm run check
+npm run test:rules
+npm run test:backend
+# Para la matriz de navegadores, instalar antes los motores de Playwright:
+npx playwright install --with-deps chromium webkit
+npm run test:browser
+```
+
+Se requieren Node compatible (22 recomendado) y Java 21 para los emuladores.
+La instalación requiere red; GitHub Actions puede tener sus propias cuotas/costos
+según el plan del repositorio. Estos comandos no ejecutan `firebase deploy`.
+
+No equivale a un staging completo accesible por internet ni a una validación en
+hardware físico. `npm run serve` por sí solo **no conecta la aplicación a los
+emuladores**: no utilizarlo como supuesto modo aislado de pruebas, porque el
+cliente conserva la configuración productiva predeterminada. Utilizar las suites
+preparadas, que aíslan sus datos y dependencias.
+
+## Referencia inactiva: futuro cloud, solo con nueva autorización
+
+Las instrucciones siguientes quedan conservadas para una futura decisión de
+habilitar servicios cloud. **No ejecutarlas bajo la decisión actual.**
 
 ## Preparación posterior en Firebase
 
-- Crear una aplicación **web** de staging y copiar su configuración pública completa.
+- Aplicación **web** registrada por el propietario; configuración pública recibida.
 - Habilitar Auth por correo/contraseña con un usuario de prueba, sin reutilizar
   credenciales reales de clientes.
 - Crear Firestore y Storage en modo protegido. No usar reglas abiertas de prueba.
@@ -46,9 +85,9 @@ despliegue si el plan de GitHub lo permite. Añadir sus variables:
 
 | Variable | Valor |
 |---|---|
-| `KRYOFIX_STAGING_PROJECT_ID` | ID del proyecto nuevo |
-| `KRYOFIX_STAGING_WEB_CONFIG` | JSON de configuración **web pública**, no de cuenta de servicio |
-| `KRYOFIX_STAGING_STORAGE_BUCKET` | Bucket privado del proyecto de pruebas; coincide con el de la configuración web |
+| `KRYOFIX_STAGING_PROJECT_ID` | `kryofix` |
+| `KRYOFIX_STAGING_WEB_CONFIG` | Contenido de `config/staging.firebase.public.json` (solo JSON público) |
+| `KRYOFIX_STAGING_STORAGE_BUCKET` | `kryofix.firebasestorage.app` (verificar antes su creación y privacidad) |
 
 Añadir como **secret**, nunca como variable, `FIREBASE_SERVICE_ACCOUNT_STAGING`:
 cuenta dedicada `deploy-staging@<ID_STAGING>.iam.gserviceaccount.com`, perteneciente
@@ -92,8 +131,9 @@ mensajes siguen desactivados; crear esos secretos no contrata ni conecta mensaje
 
 ## Ejecutar cuando esté preparado
 
-Workflow: **Staging aislado (manual, sin mensajes)**, archivo
-`.github/workflows/staging.yml`. Requiere confirmación explícita, pasa primero toda
+Workflow: **Staging cloud pausado (sin facturación)**, archivo
+`.github/workflows/staging.yml`. Actualmente sus jobs están bloqueados. Si se
+autoriza y revisa su reactivación en el futuro, requiere confirmación explícita y pasa primero toda
 la verificación y utiliza únicamente las credenciales/variables de staging.
 
 GitHub necesita que un workflow `workflow_dispatch` exista en la rama predeterminada

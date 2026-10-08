@@ -1,4 +1,4 @@
-name: Staging aislado (manual, sin mensajes)
+name: Staging cloud pausado (sin facturación)
 on:
   workflow_dispatch:
     inputs:
@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verificar:
-    if: ${{ inputs.confirmar }}
+    # El propietario eligió seguir sin facturación. Reactivar solo tras nueva autorización.
+    if: ${{ false }}
     uses: ./.github/workflows/verificacion.yml
   desplegar:
     needs: verificar

@@ -4,8 +4,10 @@
 contra emuladores y navegadores en CI. No se activaron servicios facturables, no se
 migraron datos productivos ni se enviaron mensajes a clientes durante esta sesión.
 
-Decisión actual: **sin proveedor, envíos apagados y nuevo staging**. Seguir primero
-[STAGING.md](STAGING.md); el proyecto cloud aún no está creado/autorizado.
+Decisión actual: **seguir sin facturación (Spark), sin proveedor y con envíos
+apagados**. Las pruebas continúan en emuladores; el workflow cloud de staging
+queda deshabilitado. Ver [STAGING.md](STAGING.md). Las instrucciones cloud de
+este documento son referencia futura, **no autorización para ejecutarlas**.
 
 ## 1. Preparar un entorno de pruebas separado
 

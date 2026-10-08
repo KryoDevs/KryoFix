@@ -384,3 +384,12 @@ impresión o restauración de respaldos por una pantalla emulada.
 Sin proveedor de mensajes por ahora; envíos apagados. Preparar staging nuevo,
 con workflow manual y validaciones de aislamiento. Guía: STAGING.md. No se creó
 ningún proyecto cloud ni se habilitó facturación. Suite local: 172 pruebas.
+
+
+### Decisión posterior: sin facturación
+
+El propietario creó el proyecto `kryofix`, registró la app web y confirmó Auth,
+usuario de pruebas y Firestore. Storage exige Blaze según su captura. Eligió
+**seguir sin facturación**: se mantiene Spark, el despliegue cloud de staging
+queda bloqueado en código y se continúa con las suites de emuladores. No se
+activan Storage/Functions cloud ni mensajes. STAGING.md describe el camino activo.
