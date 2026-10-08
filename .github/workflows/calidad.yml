@@ -18,9 +18,9 @@ jobs:
     name: Node ${{ matrix.node-version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -32,3 +32,6 @@ jobs:
       # lo mismo: eslint + auditoria estatica + tests (67).
       - name: Verificacion completa
         run: npm run check
+
+  integracion:
+    uses: ./.github/workflows/verificacion.yml

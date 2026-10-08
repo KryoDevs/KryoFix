@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TechFix Tracker Pro — Sistema de Gestion Tecnica</title>
-    <meta name="description" content="Sistema profesional de gestion para servicio tecnico de equipos y smartphones.">
+    <title>KryoFix — Gestión de servicio técnico</title>
+    <meta name="description" content="KryoFix, gestión de servicio técnico y reparaciones. Desarrollado por KryoDevs.">
 
     <!-- Aplica el tema guardado antes del primer pintado (evita el destello) -->
     <script src="tema.js"></script>
@@ -13,6 +13,7 @@
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-title" content="KryoFix">
     <meta name="theme-color" content="#0f172a">
     <link rel="apple-touch-icon" href="icon-192.png">
 
@@ -22,14 +23,20 @@
           - un CDN comprometido no puede ejecutar codigo en una pagina que
             maneja datos personales de clientes;
           - permite una Content-Security-Policy estricta (script-src 'self').
-        Versiones: firebase 10.14.1 (compat) y sweetalert2 11.26.25.
+        Versiones: firebase 12.19.0 (compat) y sweetalert2 11.26.25.
         El orden de los <script defer> se respeta.
     -->
     <script defer src="vendor/firebase-app-compat.js"></script>
     <script defer src="vendor/firebase-auth-compat.js"></script>
     <script defer src="vendor/firebase-firestore-compat.js"></script>
     <script defer src="vendor/sweetalert2.all.min.js"></script>
+    <script defer src="entorno.js"></script>
     <script defer src="dominio.js"></script>
+    <script defer src="borradores.js"></script>
+    <script defer src="ordenes-repositorio.js"></script>
+    <script defer src="taller-dominio.js"></script>
+    <script defer src="taller-servicio.js"></script>
+    <script defer src="ficha.js"></script>
     <script defer src="app.js"></script>
 </head>
 <body>
@@ -46,9 +53,9 @@
         <div class="login-glass-panel">
             <div class="login-brand">
                 <img src="logo.jpg" alt="" class="brand-logo-login icon-pulse" width="80" height="80">
-                <span class="login-badge">Enterprise Edition</span>
-                <h1>TechFix Pro</h1>
-                <p>Portal de Gestion de Servicio Tecnico</p>
+                <span class="login-badge">KryoDevs</span>
+                <h1>KryoFix</h1>
+                <p>Gestión de servicio técnico</p>
             </div>
             <form id="login-form" class="modern-form">
                 <div class="input-group">
@@ -64,7 +71,7 @@
                 <button type="submit" class="btn-neon">Ingresar al Sistema</button>
             </form>
             <button type="button" id="btn-recuperar" class="enlace-login">Olvide mi contrasena</button>
-            <p class="login-footer">Acceso cifrado multi-tenant · Aislamiento por tecnico</p>
+            <p class="login-footer">Desarrollado por KryoDevs · Acceso privado por técnico</p>
         </div>
     </div>
 
@@ -75,12 +82,13 @@
             <div class="logo-area">
                 <img src="logo.jpg" alt="" class="brand-logo-topbar" width="44" height="44">
                 <div class="brand-titles">
-                    <h1>TechFix Tracker <span class="brand-pro-tag">PRO</span></h1>
-                    <p class="brand-subtitle">Control operativo y trazabilidad de laboratorio</p>
+                    <h1>KryoFix <span class="brand-pro-tag">TALLER</span></h1>
+                    <p class="brand-subtitle">Gestión de servicio técnico · KryoDevs</p>
                 </div>
             </div>
             <nav class="user-actions" aria-label="Acciones de usuario">
                 <span id="red-status" class="badge-estado estado-reparado" style="display: none;" role="status" aria-live="polite">📶 Online</span>
+                <button type="button" id="btn-gestion" class="btn-icon">Gestión del taller</button>
                 <span id="user-email-display" class="user-email"></span>
                 <div class="nav-segment" role="group" aria-label="Vistas principales">
                     <button type="button" id="btn-nav-taller" class="btn-icon activo" aria-current="page">🏠 Taller</button>
@@ -124,22 +132,24 @@
                 </div>
                 <div class="stat-card stat-money">
                     <div class="stat-header">
-                        <h3>Ingresos del Mes</h3>
+                        <h3>Trabajos cerrados (mes)</h3>
                         <span class="stat-icon" aria-hidden="true">💰</span>
                     </div>
                     <p id="stat-ingresos" class="stat-valor">$0</p>
-                    <span class="stat-meta">Facturacion de ordenes del mes</span>
+                    <span class="stat-meta">Importe presupuestado; no equivale a cobros</span>
                 </div>
-                <div class="stat-card stat-pending" data-filtro-kpi="saldo" title="Ordenar activos por mayor saldo pendiente">
+                <div class="stat-card stat-pending" data-filtro-kpi="saldo" title="Ver órdenes con deuda, incluidas las entregadas">
                     <div class="stat-header">
                         <h3>Saldo por Cobrar</h3>
                         <span class="stat-icon" aria-hidden="true">⏳</span>
                     </div>
                     <p id="stat-pendiente" class="stat-valor">$0</p>
-                    <span class="stat-meta">Restante en ordenes activas</span>
+                    <span class="stat-meta">Incluye entregados con deuda</span>
                 </div>
             </div>
 
+            <p class="texto-ayuda">Indicadores calculados sobre las últimas 500 órdenes cargadas como máximo. No son un informe contable completo.</p>
+            <p id="borradores-status" class="aviso-borradores" role="status" hidden></p>
             <div class="panel-ingreso">
                 <div class="panel-cabecera-colapsable">
                     <div>
@@ -174,6 +184,7 @@
                             </div>
                         </div>
 
+                        <button type="button" id="btn-cliente-recurrente" class="btn-icon">Buscar cliente por teléfono y reutilizar datos</button>
                         <div class="form-section-title">2. Identificacion del Dispositivo</div>
                         <div class="form-row">
                             <div class="form-group">
@@ -194,6 +205,7 @@
                                 <select id="modelo" required disabled>
                                     <option value="">-- Selecciona Marca Primero --</option>
                                 </select>
+                                <small>Modelos sugeridos automáticamente por marca, junto a tu catálogo e historial. Verifica la variante exacta; si no aparece, elige Otro.</small>
                                 <input type="text" id="modelo-otro" class="campo-libre" placeholder="Escribe el modelo" maxlength="80" hidden disabled>
                             </div>
                         </div>
@@ -216,6 +228,17 @@
                         </div>
 
                         <div class="form-section-title">3. Diagnostico, Evidencia y Presupuesto</div>
+                        <section class="sugerencias-fallas" aria-labelledby="titulo-problemas">
+                            <h3 id="titulo-problemas">Síntomas habituales y revisión rápida</h3>
+                            <p class="texto-ayuda">Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas (máximo 500), no a estadísticas del fabricante.</p>
+                            <p id="problemas-contexto" role="status">Selecciona marca y modelo para ver sugerencias.</p>
+                            <label for="problema-comun">Síntoma reportado:</label>
+                            <select id="problema-comun" disabled><option value="">-- Selecciona un síntoma --</option></select>
+                            <div id="problema-detalle" class="texto-ayuda" aria-live="polite"></div>
+                            <button id="btn-aplicar-problema" type="button" class="btn-icon" disabled>Usar síntoma y preparar revisión</button>
+                            <button id="btn-quitar-problema" type="button" class="btn-icon" hidden>Quitar asociación</button>
+                            <p id="problema-resultado" role="status"></p>
+                        </section>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="tipo-reparacion">Reparacion solicitada (Catalogo):</label>
@@ -264,6 +287,7 @@
                         </div>
 
                         <button type="submit" class="btn-guardar">💾 Guardar y generar ticket</button>
+                        <button type="button" id="btn-limpiar-ingreso" class="btn-icon">Limpiar e iniciar otro ingreso</button>
                     </form>
                 </div>
             </div>
@@ -280,7 +304,8 @@
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
                             <option value="activos">Solo activos en taller</option>
-                            <option value="todos">Ver historial completo</option>
+                            <option value="todos">Ver historial cargado</option>
+                            <option value="con-saldo">Con saldo pendiente (incluye entregados)</option>
                             <option value="ingresado">📥 Ingresados</option>
                             <option value="revision">🔍 En revision</option>
                             <option value="repuesto">⏳ Esperando repuesto</option>
@@ -361,6 +386,8 @@
         </main>
     </div>
 
+    <dialog id="ficha-dialog" class="ficha-dialog" aria-labelledby="ficha-titulo"></dialog>
+
     <!-- Modal de firma digital -->
     <div id="modal-firma" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="titulo-firma" aria-hidden="true">
         <div class="modal-content">
@@ -371,6 +398,8 @@
                 <input type="checkbox" id="chk-saldar-entrega">
                 <span>Registrar saldo pendiente como pagado al entregar</span>
             </label>
+            <label for="excepcion-entrega">Motivo si se entrega con saldo pendiente (órdenes nuevas):</label>
+            <input id="excepcion-entrega" maxlength="500" placeholder="Ej. Retiro autorizado con pago acordado para el viernes">
             <canvas id="canvas-firma" width="600" height="300" aria-label="Area de firma del cliente"></canvas>
             <div class="modal-actions">
                 <button type="button" id="btn-limpiar-firma" class="btn-icon">Limpiar lienzo</button>

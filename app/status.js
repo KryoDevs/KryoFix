@@ -31,7 +31,7 @@
         });
     }
 
-    if (typeof firebase === 'undefined' || !Dominio) {
+    if (typeof firebase === 'undefined' || !Dominio || !window.KryoFixEntorno?.firebase?.projectId) {
         // Sin SDK (red bloqueada, primer arranque sin conexion): se avisa en vez
         // de dejar el mensaje de "buscando tu equipo..." para siempre.
         document.getElementById('loader').style.display = 'none';
@@ -41,14 +41,7 @@
         return;
     }
 
-    const firebaseConfig = {
-        apiKey: 'AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8',
-        authDomain: 'techfix-tracker-9a128.firebaseapp.com',
-        projectId: 'techfix-tracker-9a128',
-        storageBucket: 'techfix-tracker-9a128.firebasestorage.app',
-        messagingSenderId: '434780023940',
-        appId: '1:434780023940:web:e595dc76ac51d865a7a6d1'
-    };
+    const firebaseConfig = window.KryoFixEntorno?.firebase;
 
     if (!firebase.apps || !firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);

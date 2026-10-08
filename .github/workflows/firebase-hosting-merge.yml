@@ -7,16 +7,42 @@ on:
     branches:
       - main
 jobs:
+  verificar:
+    uses: ./.github/workflows/verificacion.yml
   build_and_deploy:
+    if: ${{ false }} # No publicar backend facturable ni en el proyecto anterior.
+    needs: verificar
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
+      - name: Exigir configuración y validación externa antes de publicar
+        env:
+          BACKEND_READY: ${{ vars.KRYOFIX_BACKEND_READY }}
+        run: |
+          if [ "$BACKEND_READY" != "true" ]; then
+            echo "::error::Completa DESPLIEGUE.md y habilita KRYOFIX_BACKEND_READY tras validar staging. No se publicará un cliente sin backend compatible."
+            exit 1
+          fi
       - run: npm ci
+      - run: npm ci --prefix functions
       - run: npm run check
+      - name: Credenciales para reglas e índices (solo al integrar en main)
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_TECHFIX_TRACKER_9A128 }}'
+      - name: Preparar parámetros no secretos del backend
+        env:
+          FIREBASE_PROJECT_ID: techfix-tracker-9a128
+          STORAGE_BUCKET_PRIVADO: ${{ vars.KRYOFIX_STORAGE_BUCKET }}
+          PROVEEDOR_URL: ${{ vars.KRYOFIX_PROVEEDOR_URL }}
+          HABILITAR_ENVIOS: ${{ vars.KRYOFIX_HABILITAR_ENVIOS || 'false' }}
+        run: node tools/configurar-backend.mjs
+      - name: Publicar backend, reglas e índices antes del nuevo cliente
+        run: npx firebase deploy --only firestore:rules,firestore:indexes,storage,functions:kryofix --project techfix-tracker-9a128 --non-interactive
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

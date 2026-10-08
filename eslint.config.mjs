@@ -4,7 +4,7 @@ export default [
     {
         // app/vendor/ son dependencias de terceros copiadas tal cual: no se
         // revisan con las reglas del proyecto (ni se corrigen a mano).
-        ignores: ['node_modules/**', '.firebase/**', 'app/vendor/**']
+        ignores: ['**/node_modules/**', '.firebase/**', 'app/vendor/**']
     },
     js.configs.recommended,
     {
@@ -30,6 +30,7 @@ export default [
                 Blob: 'readonly',
                 File: 'readonly',
                 FormData: 'readonly',
+                TextEncoder: 'readonly',
                 Intl: 'readonly',
                 URLSearchParams: 'readonly',
                 URL: 'readonly',
@@ -64,9 +65,10 @@ export default [
             }
         }
     },
+    { files: ['tests/browser/**/*.mjs'], languageOptions: { globals: { window: 'readonly', document: 'readonly', navigator: 'readonly', getComputedStyle: 'readonly' } } },
     {
         // Herramientas y tests corren en Node
-        files: ['tools/**/*.mjs', 'tests/**/*.mjs', '*.mjs'],
+        files: ['tools/**/*.mjs', 'tests/**/*.mjs', '*.mjs', 'functions/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
@@ -75,7 +77,7 @@ export default [
                 console: 'readonly',
                 URL: 'readonly',
                 setTimeout: 'readonly',
-                Buffer: 'readonly'
+                Buffer: 'readonly', fetch: 'readonly', AbortSignal: 'readonly'
             }
         },
         rules: {

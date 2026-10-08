@@ -71,7 +71,8 @@ describe('Reglas de Firestore: colecciones privadas', () => {
             assert.match(cuerpo, /allow read:\s*if esDueno\(\);/);
             assert.match(cuerpo, /allow create:\s*if seAutoAsigna\(\)/);
             assert.match(cuerpo, /allow update:\s*if esDueno\(\) && seAutoAsigna\(\) && mantieneDueno\(\)/);
-            assert.match(cuerpo, /allow delete:\s*if esDueno\(\);/);
+            assert.match(cuerpo, /allow delete:\s*if esDueno\(\)/);
+            if (coleccion === 'equipos') assert.match(cuerpo, /schemaVersion/);
         });
     }
 

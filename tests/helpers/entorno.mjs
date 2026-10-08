@@ -8,6 +8,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { webcrypto } from 'node:crypto';
+import { TextEncoder } from 'node:util';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const require = createRequire(import.meta.url);
@@ -35,6 +37,7 @@ export function crearFirestoreFalso(semilla = {}) {
     const datos = new Map(); // coleccion -> Map(id -> data)
     const oyentes = []; // { coleccion, filtros, cb }
     let contador = 0;
+    let metadata = { fromCache: false, hasPendingWrites: false };
 
     for (const [col, docs] of Object.entries(semilla)) {
         datos.set(col, new Map(Object.entries(docs)));
@@ -56,8 +59,9 @@ export function crearFirestoreFalso(semilla = {}) {
             docs.sort((a, b) => (a.data()[campo] > b.data()[campo] ? 1 : -1));
             if (dir === 'desc') docs.reverse();
         }
+        if (filtros.cursor) { const i = docs.findIndex(d => d.id === filtros.cursor.id); if (i >= 0) docs = docs.slice(i + 1); }
         if (filtros.limit) docs = docs.slice(0, filtros.limit);
-        return { docs, size: docs.length, forEach: (fn) => docs.forEach(fn) };
+        return { metadata: { ...metadata }, docs, size: docs.length, forEach: (fn) => docs.forEach(fn) };
     }
 
     function notificar() {
@@ -76,8 +80,12 @@ export function crearFirestoreFalso(semilla = {}) {
                 consulta(coleccion, { ...filtros, where: [...filtros.where, { campo, valor }] }),
             orderBy: (campo, dir = 'asc') => consulta(coleccion, { ...filtros, orderBy: { campo, dir } }),
             limit: (n) => consulta(coleccion, { ...filtros, limit: n }),
-            onSnapshot(cb, _err) {
-                const oyente = { tipo: 'coleccion', coleccion, filtros, cb };
+            startAfter: cursor => consulta(coleccion, { ...filtros, cursor }),
+            get: async () => snapshotDe(coleccion, filtros),
+            onSnapshot(opciones, recibir, fallo) {
+                const cb = typeof opciones === 'function' ? opciones : recibir;
+                const err = typeof opciones === 'function' ? recibir : fallo;
+                const oyente = { err, tipo: 'coleccion', coleccion, filtros, cb };
                 oyentes.push(oyente);
                 cb(snapshotDe(coleccion, filtros));
                 return () => {
@@ -165,7 +173,34 @@ export function crearFirestoreFalso(semilla = {}) {
         };
     }
 
-    return {
+    const api = {
+        _emitirMetadata(nueva) { metadata = { ...nueva }; notificar(); },
+        _fallarSuscripcion(err) { for (const o of oyentes) if (o.err) o.err(err); },
+        async runTransaction(callback) {
+            // Doble optimista: relee y reejecuta si hubo cambios antes del commit.
+            // No sustituye pruebas contra el emulador de Firestore.
+            for (let intento = 0; intento < 5; intento++) {
+                const lecturas = [];
+                const lote = batch();
+                const resultado = await callback({
+                    async get(ref) {
+                        const { coleccion, id } = ref._ref;
+                        const serializado = JSON.stringify(col(coleccion).get(id));
+                        lecturas.push({ coleccion, id, serializado });
+                        return { exists: serializado !== undefined,
+                            data: () => serializado === undefined ? undefined : JSON.parse(serializado) };
+                    },
+                    update: (ref, valor) => lote.update(ref, valor),
+                    set: (ref, valor) => lote.set(ref, valor)
+                });
+                if (api._antesCommit) await api._antesCommit();
+                if (api._errorTransaccion) throw api._errorTransaccion;
+                if (lecturas.some(l => JSON.stringify(col(l.coleccion).get(l.id)) !== l.serializado)) continue;
+                await lote.commit();
+                return resultado;
+            }
+            throw Object.assign(new Error('Contención'), { code: 'aborted' });
+        },
         _datos: datos,
         _oyentes: oyentes,
         _limpiezas: limpiezas,
@@ -173,6 +208,7 @@ export function crearFirestoreFalso(semilla = {}) {
         collection: (n) => consulta(n),
         // Sentinelas del SDK que usa la app (historial de estados).
         FieldValue: {
+            serverTimestamp: () => Date.now(),
             arrayUnion: (...items) => ({ __arrayUnion: items }),
             delete: () => ({ __delete: true })
         },
@@ -184,6 +220,7 @@ export function crearFirestoreFalso(semilla = {}) {
         },
         terminate: () => Promise.resolve()
     };
+    return api;
 }
 
 /** Doble de Firebase Auth. */
@@ -250,7 +287,8 @@ export function montarApp({
     semilla = {},
     conQr = false,
     sinFirebase = false,
-    inyectarScripts = true
+    inyectarScripts = true,
+    antesDeIniciar = () => {}
 } = {}) {
     const virtualConsole = new VirtualConsole();
     const errores = [];
@@ -264,6 +302,8 @@ export function montarApp({
         virtualConsole
     });
     const { window } = dom;
+    window.TextEncoder = TextEncoder;
+    Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle });
 
     const db = crearFirestoreFalso(semilla);
     const auth = crearAuthFalso();
@@ -349,6 +389,13 @@ export function montarApp({
     }
 
     window.eval(leer('app/dominio.js'));
+    window.eval(leer('app/borradores.js'));
+    window.eval(leer('app/ordenes-repositorio.js'));
+    window.eval(leer('app/taller-dominio.js'));
+    window.eval(leer('app/taller-servicio.js'));
+    window.eval(leer('app/ficha.js'));
+    window.KryoFixEntorno = { modo: 'completo', firebase: { projectId: 'demo-kryofix' } };
+    antesDeIniciar(window);
     window.eval(leer(script));
 
     return { dom, window, document: window.document, db, auth, swal, errores, trazos };
@@ -356,3 +403,12 @@ export function montarApp({
 
 /** Deja correr microtareas pendientes. */
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+/** Espera una condición observable, no una duración supuesta de la operación. */
+export async function esperarHasta(condicion, timeout = 2000) {
+    const inicio = Date.now();
+    while (!condicion()) {
+        if (Date.now() - inicio >= timeout) throw new Error('La condición esperada no se cumplió dentro del plazo');
+        await tick(5);
+    }
+}

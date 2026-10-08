@@ -31,7 +31,7 @@ function resolverConstantes(src) {
     }
     return out;
 }
-const appJs = resolverConstantes(appJsCrudo);
+const appJs = resolverConstantes(appJsCrudo + '\n' + (read('app/ordenes-repositorio.js') ?? ''));
 const statusJs = read('app/status.js') ?? '';
 const swJs = read('app/sw.js') ?? '';
 const css = read('app/estilos.css') ?? '';
@@ -238,6 +238,7 @@ if (cfgApp && cfgStatus && cfgApp.replace(/\s+/g, '') !== cfgStatus.replace(/\s+
 // error: simplemente deja una funcion muerta. Se comprueba en ambas paginas.
 // ---------------------------------------------------------------------------
 const IDS_DINAMICOS = new Set([
+    'actualizacion-disponible', // Banner creado al detectar un worker nuevo en espera.
     'pwd-nueva',
     'pwd-repetir',
     'edit-notas',

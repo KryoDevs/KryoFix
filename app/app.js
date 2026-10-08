@@ -20,14 +20,7 @@
     // CONFIGURACION DE FIREBASE
     // (la apiKey web no es un secreto: la proteccion real son firestore.rules)
     // ========================
-    const firebaseConfig = {
-        apiKey: 'AIzaSyC5hHgmyDXEWmzKzHRoywJk__iHgRcJ8F8',
-        authDomain: 'techfix-tracker-9a128.firebaseapp.com',
-        projectId: 'techfix-tracker-9a128',
-        storageBucket: 'techfix-tracker-9a128.firebasestorage.app',
-        messagingSenderId: '434780023940',
-        appId: '1:434780023940:web:e595dc76ac51d865a7a6d1'
-    };
+    const firebaseConfig = window.KryoFixEntorno?.firebase;
 
     const COL_EQUIPOS = 'equipos';
     const COL_CATALOGO = 'catalogo';
@@ -35,7 +28,8 @@
 
     // Tope de documentos que se mantienen en memoria (la lista se filtra en el
     // cliente). Con mas de 500 ordenes historicas hace falta paginacion real.
-    const LIMITE_EQUIPOS = 500;
+    const SPARK = window.KryoFixEntorno?.modo === 'spark';
+    const LIMITE_EQUIPOS = SPARK ? 100 : 500;
 
     // Dias que un equipo listo puede esperar al cliente antes de avisar.
     const PLAZO_ENTREGA_DIAS = 30;
@@ -80,9 +74,11 @@
 
     function dependenciasFaltantes() {
         const faltantes = [];
+        if (!firebaseConfig?.projectId) faltantes.push('Configuración del taller');
         if (typeof firebase === 'undefined') faltantes.push('Firebase');
         if (typeof Swal === 'undefined') faltantes.push('SweetAlert2');
         if (!window.TechFixDominio) faltantes.push('Dominio');
+        if (!window.KryoFixBorradores || !window.KryoFixOrdenes || !window.KryoFixTallerServicio || !window.KryoFixTallerDominio || !window.KryoFixFicha) faltantes.push('Módulos de órdenes');
         return faltantes;
     }
 
@@ -123,6 +119,12 @@
 
     const loginScreen = $('login-screen');
     const appContent = $('app-content');
+    if (SPARK) {
+        const aviso = document.createElement('p');
+        aviso.className = 'texto-ayuda aviso-spark';
+        aviso.textContent = 'Spark sin facturación · Este panel, sus filtros, cifras y CSV usan hasta las 100 órdenes más recientes. Para órdenes anteriores: Gestión del taller → Historial. Para un informe más amplio: Informes. Las cuotas gratuitas no son ilimitadas.';
+        appContent.prepend(aviso);
+    }
     const loginForm = $('login-form');
     const btnLogout = $('btn-logout');
     const btnTheme = $('btn-theme');
@@ -146,16 +148,72 @@
     const ctx = canvas ? canvas.getContext('2d') : null;
 
     let proyectos = [];
+    let sincronizacionOrdenes = null;
+    let errorSincronizacion = false;
+    const borradores = window.KryoFixBorradores.crear(() => Dominio.crearProcedimiento());
+    const ordenesRepositorio = window.KryoFixOrdenes.crear({
+        db, usuario: () => currentUser, enLinea: () => navigator.onLine !== false,
+        timestampServidor: () => CampoValor.serverTimestamp()
+    });
+    let problemaAplicado = null;
     let catalogoDB = [];
     let unsubscribeDB = null;
     let unsubscribeCatalogo = null;
     let currentUser = null;
+    let epocaSesion = 0;
     let currentFirmaId = null;
+    let firmaBaseRevision = 0;
+    let seleccionFoto = 0;
+    let procesandoFoto = false;
     let fotoComprimidaBase64 = null;
+    let clienteSeleccionadoId = null;
+    let ingresoPendienteId = null;
     let firmaTieneTrazos = false;
+    let isDrawing = false;
+    let punteroFirma = null;
+    let solicitudFirma = 0;
     let ultimoFoco = null;
     let filtroCatalogo = '';
     const pinesVisibles = new Set();
+    const tallerServicio = window.KryoFixTallerServicio.crear({ db, usuario: () => currentUser,
+        enLinea: () => navigator.onLine !== false, timestampServidor: () => CampoValor.serverTimestamp() });
+    const ficha = window.KryoFixFicha.crear({ servicio: tallerServicio, usuario: () => currentUser,
+        alOrden: p => { const i = proyectos.findIndex(x => x.id === p.id); if (i >= 0) proyectos[i] = p; else proyectos.push(p); },
+        procedimiento: p => seccionProcedimiento(p),
+        procedimientoPendiente: p => borradores.obtener(p.id, p.procedimiento).sucio, alCerrar: () => { window.history.replaceState(null, '', window.location.pathname + window.location.search); renderizarProyectos(); },
+        urlSeguimiento });
+    async function migrarArchivoNuevo(id, tipo, uid, epoca) {
+        if (SPARK) return; // La evidencia limitada permanece privada en Firestore.
+        if (!currentUser?.getIdToken || currentUser.uid !== uid || epocaSesion !== epoca) return;
+        try {
+            const capacidad = await tallerServicio.remoto('capacidades');
+            if (!currentUser || currentUser.uid !== uid || epocaSesion !== epoca) return;
+            if (!capacidad.storage) throw new Error('Storage aún no configurado');
+            await tallerServicio.remoto('migrar-archivo', { id, tipo });
+        } catch (_e) {
+            if (currentUser?.uid === uid && epocaSesion === epoca) toast('warning', 'Orden guardada. Archivo conservado en Firestore; migra desde Evidencias cuando Storage esté disponible.');
+        }
+    }
+    escuchar('btn-gestion', 'click', () => ficha.gestion());
+    escuchar('btn-cliente-recurrente', 'click', async () => {
+        if (!currentUser) return;
+        const uid = currentUser.uid;
+        try {
+            const clientes = await tallerServicio.listar(uid, 'clientes');
+            if (!currentUser || currentUser.uid !== uid) return;
+            const telefono = normalizarTelefono($('telefono').value);
+            const encontrados = clientes.filter(c => c.telefono === telefono);
+            if (!encontrados.length) { Swal.fire('Sin coincidencias', 'No hay clientes guardados con ese teléfono. El ingreso creará un registro nuevo.', 'info'); return; }
+            const opciones = Object.fromEntries(encontrados.map(c => [c.id, c.nombre + ' · ' + c.telefono]));
+            const r = await Swal.fire({ title: 'Seleccionar cliente existente', input: 'select', inputOptions: opciones,
+                showCancelButton: true, confirmButtonText: 'Usar cliente', cancelButtonText: 'Cancelar' });
+            if (!currentUser || currentUser.uid !== uid || !r.isConfirmed) return;
+            const c = encontrados.find(c => c.id === r.value);
+            if (c) { $('cliente').value = c.nombre; $('telefono').value = c.telefono; clienteSeleccionadoId = c.id; }
+        } catch (err) { avisarError('No se pudo consultar la agenda', err); }
+    });
+    escuchar('cliente', 'input', () => { clienteSeleccionadoId = null; });
+    escuchar('telefono', 'input', () => { clienteSeleccionadoId = null; });
 
     // ========================
     // UTILIDADES
@@ -198,8 +256,9 @@
         Swal.fire(
             titulo,
             esPermiso
-                ? 'No tienes permiso para esta operacion. Revisa firestore.rules.'
-                : 'Ocurrio un problema. Revisa tu conexion e intentalo de nuevo.',
+                ? 'Cuenta no autorizada o reglas pendientes. Comprueba que se publicaron las reglas con el UID de tu usuario del taller.'
+                : err?.code === 'resource-exhausted' ? 'Se alcanzó una cuota de Firebase. No actives facturación: revisa Uso en la consola y espera el restablecimiento de la cuota aplicable.'
+                : (err?.message || 'Ocurrió un problema. Revisa tu conexión e inténtalo de nuevo.'),
             'error'
         );
     }
@@ -238,16 +297,6 @@
     function parrafo(etiqueta, valor) {
         if (valor === null || valor === undefined || valor === '') return null;
         return el('p', {}, [el('b', { text: etiqueta + ': ' }), document.createTextNode(String(valor))]);
-    }
-
-    /** Datos minimos y NO sensibles que se publican para el QR. */
-    function documentoSeguimiento(uid, estado, modelo) {
-        return {
-            uid,
-            estado,
-            modelo: String(modelo || '').slice(0, 80),
-            actualizado: Date.now()
-        };
     }
 
     /**
@@ -359,6 +408,18 @@
     }
 
     function limpiarSesionEnPantalla() {
+        epocaSesion++;
+        if (form) {
+            form.inert = false;
+            const guardar = form.querySelector('button[type="submit"]');
+            if (guardar) { guardar.disabled = false; guardar.textContent = '💾 Guardar y generar ticket'; }
+        }
+        borradores.limpiar();
+        ficha.limpiar();
+        if (typeof Swal !== 'undefined') Swal.close();
+        sincronizacionOrdenes = null;
+        errorSincronizacion = false;
+        actualizarEstadoRed();
         proyectos = [];
         catalogoDB = [];
         pinesVisibles.clear();
@@ -384,16 +445,28 @@
         // dispara mas de una vez (refresco de token, reconexion, etc.).
         cancelarSuscripciones();
 
+        if (user && window.KryoFixEntorno?.propietarioUid && user.uid !== window.KryoFixEntorno.propietarioUid) {
+            currentUser = null;
+            limpiarSesionEnPantalla();
+            loginScreen.style.display = 'flex'; appContent.style.display = 'none';
+            auth.signOut().catch(() => {});
+            Swal.fire('Cuenta no autorizada', 'Inicia sesión con el usuario del taller cuyo UID se configuró al publicar. No se consultaron sus datos.', 'warning');
+            return;
+        }
         if (user) {
             const mismoUsuario = currentUser && currentUser.uid === user.uid;
             if (!mismoUsuario) limpiarSesionEnPantalla();
             currentUser = user;
             loginScreen.style.display = 'none';
             appContent.style.display = 'block';
-            if (userEmailDisplay) userEmailDisplay.textContent = user.email;
+            if (userEmailDisplay) userEmailDisplay.textContent = user.email + (SPARK ? ' · Spark: sin facturación' : '');
             cargarDatos();
             cargarCatalogo();
-            if (!mismoUsuario) toast('success', 'Bienvenido!');
+            if (!mismoUsuario) {
+                toast('success', 'Bienvenido!');
+                const id = new URLSearchParams(window.location.hash.slice(1)).get('orden');
+                if (id && Dominio.extraerCodigoOrden(id)) ficha.abrir(id);
+            }
         } else {
             currentUser = null;
             loginScreen.style.display = 'flex';
@@ -454,6 +527,12 @@
     });
 
     escuchar(btnLogout, 'click', async () => {
+        if (borradores.pendientes().length || ficha.tienePendientes()) {
+            const respuesta = await Swal.fire({ title: '¿Salir con cambios pendientes?',
+                text: 'Los borradores se conservan solo en esta pestaña y se borrarán al salir. Una operación ya enviada puede completarse en el servidor.',
+                icon: 'warning', showCancelButton: true, confirmButtonText: 'Salir y descartar borradores', cancelButtonText: 'Volver' });
+            if (!respuesta.isConfirmed) return;
+        }
         try {
             cancelarSuscripciones();
             await auth.signOut();
@@ -522,21 +601,24 @@
         // El filtro por uid va en el SERVIDOR. Filtrar en el cliente (como antes)
         // descargaba datos de otros tecnicos y, con limit(500), podia dejar fuera
         // los equipos propios.
-        unsubscribeDB = db
-            .collection(COL_EQUIPOS)
-            .where('uid', '==', currentUser.uid)
-            .orderBy('timestamp', 'desc')
-            .limit(LIMITE_EQUIPOS)
-            .onSnapshot(
+        const uid = currentUser.uid;
+        unsubscribeDB = ordenesRepositorio.suscribir(uid, LIMITE_EQUIPOS,
                 (snapshot) => {
+                    if (!currentUser || currentUser.uid !== uid) return;
+                    sincronizacionOrdenes = snapshot.metadata || null;
+                    errorSincronizacion = false;
                     proyectos = [];
                     snapshot.forEach((doc) => proyectos.push({ ...doc.data(), id: doc.id }));
                     loader.style.display = 'none';
                     revisarRecordatorios();
                     renderizarProyectos();
                     actualizarDashboard();
+                    actualizarEstadoRed();
                 },
                 (error) => {
+                    if (!currentUser || currentUser.uid !== uid) return;
+                    errorSincronizacion = true;
+                    actualizarEstadoRed();
                     loader.style.display = 'none';
                     if (!error) {
                         avisarError('Error al cargar los equipos', null);
@@ -572,7 +654,7 @@
             return f.getMonth() === mes && f.getFullYear() === anio;
         });
 
-        const saldoPorCobrar = activos.reduce(
+        const saldoPorCobrar = proyectos.reduce(
             (sum, p) => sum + Math.max(0, (Number(p.costo) || 0) - (Number(p.abono) || 0)),
             0
         );
@@ -592,7 +674,7 @@
         if (!card || !filtroEstado) return;
         const destino = card.getAttribute('data-filtro-kpi');
         if (destino) {
-            filtroEstado.value = destino === 'saldo' ? 'activos' : destino;
+            filtroEstado.value = destino === 'saldo' ? 'con-saldo' : destino;
             if (destino === 'saldo' && ordenarProyectos) ordenarProyectos.value = 'saldo';
             renderizarProyectos();
         }
@@ -665,7 +747,10 @@
             tarjeta.appendChild(fila);
         }
 
+        tarjeta.appendChild(el('p', { class: 'proxima-accion', text: 'Próxima acción: ' + window.KryoFixTallerDominio.siguienteAccion(p) }));
         tarjeta.appendChild(el('p', { class: 'tarjeta-falla', text: 'Falla: ' + (p.falla || 'Sin detalle') }));
+        if (p.problemaComun) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'Síntoma de recepción: ' + p.problemaComun.titulo + ' (pendiente de validación técnica)' }));
+        tarjeta.appendChild(seccionProcedimiento(p));
         if (p.notas) tarjeta.appendChild(el('p', { class: 'nota-interna', text: 'Nota interna: ' + p.notas }));
         if (p.accesorios) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: p.accesorios }));
 
@@ -706,7 +791,10 @@
             );
         }
 
+        if (p.archivos) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'Archivos privados: consultar la sección Evidencias de la ficha.' }));
         const acciones = el('div', { class: 'acciones-tarjeta' });
+        acciones.appendChild(el('button', { class: 'btn-icon btn-ficha', text: 'Abrir ficha de trabajo',
+            attrs: { type: 'button', 'data-accion': 'ficha', 'data-id': p.id } }));
         const select = el('select', {
             class: 'select-estado-rapido estado-' + (p.estado || 'ingresado'),
             attrs: {
@@ -774,6 +862,11 @@
                 attrs: { type: 'button', 'data-accion': 'borrar', 'data-id': p.id }
             })
         );
+        const secundarias = el('details', { class: 'acciones-secundarias' }, [el('summary', { text: 'Más acciones' })]);
+        for (const boton of [...acciones.querySelectorAll('button')]) {
+            if (!boton.classList.contains('btn-ficha')) secundarias.appendChild(boton);
+        }
+        acciones.appendChild(secundarias);
         tarjeta.appendChild(acciones);
         return tarjeta;
     }
@@ -791,6 +884,7 @@
                 .toLowerCase();
             if (txt && !campos.includes(txt)) return false;
             if (filtro === 'activos') return p.estado !== 'entregado';
+            if (filtro === 'con-saldo') return calcularSaldo(p) > 0;
             if (filtro !== 'todos') return p.estado === filtro;
             return true;
         });
@@ -819,6 +913,16 @@
             contadorResultados.textContent = filtrados.length + (filtrados.length === 1 ? ' orden' : ' ordenes');
         }
 
+        // El evento toggle se entrega de forma asíncrona; capturar también el DOM
+        // antes de reconstruir evita perder una apertura seguida de un snapshot.
+        for (const tarjeta of listaProyectos.children) {
+            const detalle = tarjeta.querySelector('.procedimiento');
+            if (detalle) borradores.recordarApertura(tarjeta.getAttribute('data-id'), detalle.open);
+        }
+        const activo = document.activeElement;
+        const tarjetaActiva = activo && activo.closest('[data-id]');
+        const focoId = tarjetaActiva && tarjetaActiva.getAttribute('data-id');
+        const campoFoco = activo && activo.getAttribute('data-proc-campo');
         listaProyectos.innerHTML = '';
         if (filtrados.length === 0) {
             const hayBusqueda = buscador && buscador.value.trim();
@@ -835,6 +939,11 @@
         const frag = document.createDocumentFragment();
         filtrados.forEach((p) => frag.appendChild(construirTarjeta(p)));
         listaProyectos.appendChild(frag);
+        if (focoId && campoFoco) {
+            const tarjeta = [...listaProyectos.children].find(n => n.getAttribute('data-id') === focoId);
+            const campo = tarjeta && [...tarjeta.querySelectorAll('[data-proc-campo]')].find(n => n.getAttribute('data-proc-campo') === campoFoco);
+            if (campo && !campo.disabled) campo.focus({ preventScroll: true });
+        }
     }
 
     /** Aviso de equipos listos que el cliente no ha venido a retirar. */
@@ -878,6 +987,9 @@
         if (!destino) return;
         const id = destino.getAttribute('data-id');
         switch (destino.getAttribute('data-accion')) {
+            case 'ficha':
+                ficha.abrir(id);
+                break;
             case 'wa':
                 enviarWhatsApp(id);
                 break;
@@ -926,9 +1038,11 @@
     // ========================
     // Limite de Firestore: 1 MiB por documento. Aqui se reserva un margen para
     // los demas campos; la solucion de fondo es mover las fotos a Storage.
-    const MAX_FOTO_BYTES = 200 * 1024;
+    const MAX_FOTO_BYTES = (SPARK ? 80 : 200) * 1024;
 
     escuchar('foto-evidencia', 'change', function (e) {
+        const seleccion = ++seleccionFoto;
+        procesandoFoto = false;
         const file = e.target.files && e.target.files[0];
         const preview = $('preview-foto');
         if (!file) {
@@ -944,14 +1058,20 @@
 
         const reader = new FileReader();
         reader.onerror = () => {
+            if (seleccion !== seleccionFoto) return;
+            procesandoFoto = false;
             if (typeof Swal !== 'undefined') Swal.fire('Error', 'No se pudo leer la imagen.', 'error');
         };
         reader.onload = function (ev) {
+            if (seleccion !== seleccionFoto) return;
             const img = new Image();
             img.onerror = () => {
+                if (seleccion !== seleccionFoto) return;
+                procesandoFoto = false;
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'El archivo no es una imagen valida.', 'error');
             };
             img.onload = function () {
+                if (seleccion !== seleccionFoto) return;
                 // Se prueba de mayor a menor: primero bajando la calidad y, si
                 // aun no alcanza, reduciendo el lado mayor. Con el while fijo de
                 // calidad que habia antes, una foto muy detallada podia superar
@@ -987,6 +1107,7 @@
                     max = Math.round(max * 0.75);
                 }
 
+                procesandoFoto = false;
                 if (bytes > MAX_FOTO_BYTES) {
                     if (typeof Swal !== 'undefined') {
                         Swal.fire('Imagen muy pesada', 'No se pudo comprimir lo suficiente. Prueba con otra foto.', 'warning');
@@ -1002,6 +1123,7 @@
             };
             img.src = ev.target.result;
         };
+        procesandoFoto = true;
         reader.readAsDataURL(file);
     });
 
@@ -1021,6 +1143,58 @@
     // ========================
     // 5. FORMULARIO DE NUEVO INGRESO
     // ========================
+
+    function refrescarProblemas() {
+        const teniaAsociacion = !!problemaAplicado;
+        problemaAplicado = null;
+        $('btn-quitar-problema').hidden = true;
+        $('problema-resultado').textContent = teniaAsociacion && $('falla').value
+            ? 'Se quitó la asociación anterior. El texto de síntomas se conserva; revísalo y aplica una sugerencia para el equipo actual.' : '';
+        $('problema-detalle').replaceChildren();
+        $('btn-aplicar-problema').disabled = true;
+        const selector = $('problema-comun');
+        selector.replaceChildren(el('option', { text: '-- Selecciona un síntoma --', attrs: { value: '' } }));
+        const problemas = Dominio.obtenerProblemas(valorMarca(), valorModelo(), proyectos);
+        selector.disabled = !problemas.length;
+        $('problemas-contexto').textContent = problemas.length ?
+            'Revisión para ' + valorMarca() + ' ' + valorModelo() + '. Sugerencias generales, priorizadas por tu historial de este modelo.' :
+            'Selecciona marca y modelo para ver sugerencias.';
+        for (const problema of problemas) selector.appendChild(el('option', {
+            text: problema.titulo + (problema.registros ? ' · ' + problema.registros + ' registro(s) en este modelo' : ''),
+            attrs: { value: problema.id }
+        }));
+    }
+
+    escuchar('problema-comun', 'change', () => {
+        const problema = Dominio.obtenerProblemas(valorMarca(), valorModelo(), proyectos).find(p => p.id === $('problema-comun').value);
+        $('btn-aplicar-problema').disabled = !problema;
+        $('problema-detalle').replaceChildren();
+        if (problema) $('problema-detalle').append(
+            el('p', { text: problema.comprobacion }), el('p', { text: problema.contexto }),
+            el('p', { text: 'Al usarlo se añade el síntoma sin borrar tus notas y se prepara una guía de evaluación. No autoriza reparaciones ni cambia precios.' })
+        );
+    });
+
+    escuchar('btn-aplicar-problema', 'click', () => {
+        const problema = Dominio.obtenerProblemas(valorMarca(), valorModelo(), proyectos).find(p => p.id === $('problema-comun').value);
+        if (!problema) return;
+        const detalle = $('falla').value.trim();
+        const texto = detalle.includes(problema.titulo) ? detalle : [detalle, problema.titulo].filter(Boolean).join(' · ');
+        if (texto.length > $('falla').maxLength) {
+            $('problema-resultado').textContent = 'No se aplicó: el detalle supera 200 caracteres. Acórtalo sin perder información y vuelve a intentarlo.';
+            return;
+        }
+        $('falla').value = texto;
+        problemaAplicado = { id: problema.id, titulo: problema.titulo, marca: valorMarca(), modelo: valorModelo() };
+        $('btn-quitar-problema').hidden = false;
+        $('problema-resultado').textContent = 'Aplicado: ' + problema.titulo + '. La guía se guardará al registrar el equipo. Puedes editar los síntomas; presupuesto y notas no se modificaron.';
+    });
+
+    escuchar('btn-quitar-problema', 'click', () => {
+        refrescarProblemas();
+        $('problema-resultado').textContent = 'Asociación quitada; se usará diagnóstico inicial. El texto de síntomas se conserva para que puedas editarlo.';
+    });
+
     function valorMarca() {
         const sel = $('marca').value;
         return sel === 'Otro' ? $('marca-otro').value.trim() : sel;
@@ -1041,7 +1215,11 @@
     }
 
     function reiniciarFormulario() {
+        seleccionFoto++;
+        procesandoFoto = false;
         form.reset();
+        clienteSeleccionadoId = null;
+        ingresoPendienteId = null;
         fotoComprimidaBase64 = null;
         $('preview-foto').style.display = 'none';
         $('marca-otro').hidden = true;
@@ -1056,15 +1234,26 @@
         rep.innerHTML = '<option value="">-- Selecciona Modelo Primero --</option>';
         rep.disabled = true;
         marcarFormulario(null);
+        refrescarProblemas();
     }
+
+    escuchar('btn-limpiar-ingreso', 'click', async () => {
+        if (form.inert) return;
+        const respuesta = await Swal.fire({ title: '¿Limpiar la recepción?',
+            text: 'Se descartarán los datos escritos aquí, no las órdenes guardadas. Si hubo un error de conexión, revisa el historial antes de repetir el ingreso.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'Limpiar formulario', cancelButtonText: 'Volver' });
+        if (respuesta.isConfirmed && !form.inert) reiniciarFormulario();
+    });
 
     escuchar(form, 'submit', async (e) => {
         e.preventDefault();
+        const sesionDeIngreso = epocaSesion;
         if (!currentUser) {
             if (typeof Swal !== 'undefined') Swal.fire('Sesion requerida', 'Inicia sesion primero.', 'error');
             return;
         }
         marcarFormulario(null);
+        if (procesandoFoto) { Swal.fire('Fotografía en proceso', 'Espera a que termine la compresión de la evidencia antes de guardar.', 'info'); return; }
 
         const cliente = $('cliente').value.trim();
         const telefono = normalizarTelefono($('telefono').value);
@@ -1117,7 +1306,8 @@
 
         const nuevoProyecto = {
             uid: currentUser.uid,
-            idOrden: siguienteIdOrden(ahora),
+            clienteId: clienteSeleccionadoId,
+            idOrden: 'Pendiente de asignación',
             cliente,
             telefono,
             equipo: marca,
@@ -1126,6 +1316,10 @@
             pin: $('pin').value,
             accesorios: $('accesorios').value.trim(),
             falla: fallaFinal,
+            problemaComun: problemaAplicado && problemaAplicado.marca === marca && problemaAplicado.modelo === modelo
+                ? { id: problemaAplicado.id, titulo: problemaAplicado.titulo } : null,
+            procedimiento: problemaAplicado && problemaAplicado.marca === marca && problemaAplicado.modelo === modelo
+                ? Dominio.procedimientoParaProblema(problemaAplicado.id, marca, modelo) : Dominio.crearProcedimiento(),
             estado,
             prioridad: $('prioridad').value,
             notas: $('notas').value.trim(),
@@ -1145,19 +1339,21 @@
         const etiqueta = btnSubmit.textContent;
         btnSubmit.disabled = true;
         btnSubmit.textContent = 'Guardando...';
+        form.inert = true;
         try {
-            // Se reserva el id para que el espejo publico comparta la misma clave
-            // y el QR del ticket apunte al documento correcto.
-            const ref = db.collection(COL_EQUIPOS).doc();
-            const lote = db.batch ? db.batch() : null;
-            if (lote) {
-                lote.set(ref, nuevoProyecto);
-                lote.set(db.collection(COL_SEGUIMIENTO).doc(ref.id), documentoSeguimiento(currentUser.uid, estado, modelo));
-                await lote.commit();
-            } else {
-                await ref.set(nuevoProyecto);
-                await db.collection(COL_SEGUIMIENTO).doc(ref.id).set(documentoSeguimiento(currentUser.uid, estado, modelo));
+            const imei = nuevoProyecto.imei.replace(/\s+/g, '').toLowerCase();
+            if (imei && proyectos.some(p => p.estado !== 'entregado' && String(p.imei || '').replace(/\s+/g, '').toLowerCase() === imei)) {
+                const confirmar = await Swal.fire({ title: 'Posible ingreso duplicado',
+                    text: 'Existe una orden activa cargada con este IMEI/serie. Revisa el historial antes de continuar.',
+                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Registrar de todos modos', cancelButtonText: 'Revisar' });
+                if (!confirmar.isConfirmed) return;
             }
+            if (!currentUser || currentUser.uid !== nuevoProyecto.uid || sesionDeIngreso !== epocaSesion) return;
+            ingresoPendienteId = ingresoPendienteId || tallerServicio.nuevoId();
+            const creado = await tallerServicio.crearOrden(currentUser.uid, nuevoProyecto, ingresoPendienteId);
+            if (!currentUser || currentUser.uid !== nuevoProyecto.uid || sesionDeIngreso !== epocaSesion) return;
+            const ref = { id: creado.id };
+            nuevoProyecto.idOrden = creado.idOrden;
 
             reiniciarFormulario();
             if (filtroEstado.value === 'entregado') filtroEstado.value = 'activos';
@@ -1165,25 +1361,23 @@
             if (listaProyectos.scrollIntoView) listaProyectos.scrollIntoView({ behavior: 'smooth' });
             // El snapshot puede no haber llegado todavia: se usa el registro
             // recien creado como respaldo para poder imprimir el ticket ya.
-            const recienCreado = proyectos.find((x) => x.id === ref.id) || { id: ref.id, ...nuevoProyecto };
+            const recienCreado = proyectos.find((x) => x.id === ref.id) || creado;
             ofrecerTicket(recienCreado);
+            if (creado.evidencia) migrarArchivoNuevo(creado.id, 'evidencia', nuevoProyecto.uid, sesionDeIngreso);
         } catch (err) {
-            avisarError('No se pudo guardar el equipo', err);
+            if (sesionDeIngreso === epocaSesion) avisarError('No se pudo guardar el equipo', err);
         } finally {
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = etiqueta;
+            if (sesionDeIngreso === epocaSesion) {
+                btnSubmit.disabled = false;
+                form.inert = false;
+                btnSubmit.textContent = etiqueta;
+            }
         }
     });
 
     // ========================
     // 6. ACCIONES DE TARJETA (ESTADO, EDICION, HISTORIAL, ENTREGA)
     // ========================
-    /** Entrada de historial lista para arrayUnion (null si no esta soportado). */
-    function entradaHistorial(estado, uid) {
-        if (!CampoValor || typeof CampoValor.arrayUnion !== 'function') return null;
-        return CampoValor.arrayUnion({ estado, en: Date.now(), por: uid || '' });
-    }
-
     async function cambiarEstado(id, nuevoEstado) {
         if (!ESTADOS.includes(nuevoEstado)) return;
         const previo = proyectos.find((x) => x.id === id);
@@ -1198,36 +1392,10 @@
         if (previo.estado === nuevoEstado) return;
 
         try {
-            const uid = currentUser ? currentUser.uid : previo.uid;
-            const parche = { estado: nuevoEstado, uid };
-            // Se registra cuando el equipo quedo reparado para que las
-            // estadisticas del mes usen la fecha real de cierre.
-            if (nuevoEstado === 'reparado' && !previo.fechaReparacion) parche.fechaReparacion = Date.now();
-            const historial = entradaHistorial(nuevoEstado, uid);
-            if (historial) parche.historial = historial;
+            if (!currentUser) return;
+            await tallerServicio.ejecutar({ id, uid: currentUser.uid, revision: previo.revisionOrden || 0,
+                opId: tallerServicio.nuevoId(), accion: 'estado', datos: { estado: nuevoEstado } });
 
-            const lote = db.batch ? db.batch() : null;
-            const refEquipo = db.collection(COL_EQUIPOS).doc(id);
-            const refSeguimiento = db.collection(COL_SEGUIMIENTO).doc(id);
-            const seguimiento = documentoSeguimiento(uid, nuevoEstado, previo.modelo);
-
-            if (lote) {
-                lote.update(refEquipo, parche);
-                lote.set(refSeguimiento, seguimiento);
-                await lote.commit();
-            } else {
-                await refEquipo.update(parche);
-                await refSeguimiento.set(seguimiento);
-            }
-
-            // Regla de negocio: quien se lleva el equipo deja su conformidad.
-            if (nuevoEstado === 'entregado' && !previo.firmaCliente && typeof Swal !== 'undefined') {
-                await Swal.fire({
-                    title: 'Entrega sin firma',
-                    text: 'El estado quedo como entregado, pero no hay firma de conformidad guardada.',
-                    icon: 'warning'
-                });
-            }
         } catch (err) {
             avisarError('No se pudo cambiar el estado', err);
             renderizarProyectos(); // revierte el select a su valor real
@@ -1299,18 +1467,11 @@
         }
 
         try {
-            const uid = currentUser ? currentUser.uid : previo.uid;
-            await db.collection(COL_EQUIPOS).doc(id).update({
-                uid,
-                cliente,
-                telefono,
-                falla,
-                accesorios,
-                notas: String(valores.notas ?? previo.notas ?? '').slice(0, 240),
-                prioridad: Dominio.PRIORIDADES.includes(valores.prioridad) ? valores.prioridad : (previo.prioridad || 'normal'),
-                costo,
-                abono
-            });
+            if (!currentUser) return false;
+            await tallerServicio.ejecutar({ id, uid: currentUser.uid, revision: previo.revisionOrden || 0,
+                opId: tallerServicio.nuevoId(), accion: 'editar', datos: { cliente, telefono, falla, accesorios,
+                    notas: String(valores.notas ?? previo.notas ?? '').slice(0, 240),
+                    prioridad: valores.prioridad || previo.prioridad || 'normal', costo, abono } });
             toast('success', 'Orden actualizada');
             return true;
         } catch (err) {
@@ -1319,9 +1480,138 @@
         }
     }
 
-    /**
-     * Muestra la trazabilidad completa de estados de la orden.
-     */
+    /** Guía privada: el borrador vive en memoria de sesión, no en la tarjeta. */
+    function seccionProcedimiento(p) {
+        const entrada = borradores.obtener(p.id, p.procedimiento);
+        const uid = currentUser && currentUser.uid;
+        const vigente = () => currentUser && currentUser.uid === uid && borradores.vigente(p.id, entrada);
+        const actual = () => proyectos.find(item => item.id === p.id);
+        const entregado = () => !actual() || actual().estado === 'entregado';
+        const bloque = el('details', { class: 'procedimiento' });
+        bloque.open = entrada.abierto;
+        bloque.addEventListener('toggle', () => {
+            if (bloque.isConnected && vigente()) entrada.abierto = bloque.open;
+        });
+        const resumen = el('summary', { attrs: { 'data-proc-campo': 'abrir' } });
+        bloque.appendChild(resumen);
+        bloque.appendChild(el('p', { class: 'texto-ayuda', text:
+            'Guía general, no manual específico de ' + [p.equipo, p.modelo].filter(Boolean).join(' ') +
+            '. Confirma la variante y consulta al fabricante. Solo para personal capacitado. No cambia el estado de la orden.' }));
+        bloque.appendChild(el('p', { class: 'texto-ayuda', text:
+            'El borrador se conserva al filtrar, pero solo durante esta sesión. Guarda con conexión antes de cerrar o recargar la pestaña.' }));
+        const selector = el('select', { attrs: { 'aria-label': 'Procedimiento a realizar', 'data-proc-campo': 'tipo' } });
+        for (const [tipo, plantilla] of Object.entries(Dominio.PROCEDIMIENTOS)) {
+            selector.appendChild(el('option', { text: plantilla.titulo, attrs: { value: tipo } }));
+        }
+        const progreso = el('p', { class: 'detalle-extra', attrs: { 'aria-live': 'polite' } });
+        const lista = el('ol', { class: 'procedimiento-pasos' });
+        const mensaje = el('p', { class: 'detalle-extra', attrs: { role: 'status' } });
+        const guardar = el('button', { class: 'btn-icon', text: 'Guardar procedimiento y avance', attrs: { type: 'button', 'data-proc-campo': 'guardar' } });
+        const comparar = el('details', {}, [el('summary', { text: 'Ver última versión recibida' })]);
+        const remoto = el('ol', { class: 'procedimiento-pasos' });
+        comparar.appendChild(remoto);
+        const descartar = el('button', { class: 'btn-icon', text: 'Descartar borrador y cargar versión recibida', attrs: { type: 'button', 'data-proc-campo': 'descartar' } });
+        const actualizar = () => {
+            const bloqueado = entregado() || entrada.guardando || entrada.confirmando;
+            resumen.textContent = 'Procedimiento: ' + entrada.guia.titulo;
+            selector.value = entrada.guia.tipo;
+            selector.disabled = bloqueado;
+            guardar.disabled = bloqueado || entrada.conflicto;
+            guardar.textContent = entrada.guardando ? 'Validando y guardando…' : 'Guardar procedimiento y avance';
+            lista.querySelectorAll('input').forEach(input => { input.disabled = bloqueado; });
+            progreso.textContent = entrada.guia.pasos.filter(paso => paso.completado).length + ' de ' + entrada.guia.pasos.length + ' pasos completados';
+            descartar.hidden = !entrada.sucio && !entrada.conflicto;
+            descartar.disabled = entrada.guardando || entrada.confirmando;
+            comparar.hidden = !entrada.conflicto;
+            remoto.replaceChildren();
+            if (entrada.conflicto) {
+                remoto.appendChild(el('li', { text: entrada.remoto ? entrada.remoto.titulo : 'Sin procedimiento guardado.' }));
+                for (const paso of entrada.remoto?.pasos || []) remoto.appendChild(el('li', { text: (paso.completado ? 'Completado: ' : 'Pendiente: ') + paso.texto }));
+            }
+            if (entrada.guardando) mensaje.textContent = 'Guardando: pendiente de confirmación del servidor.';
+            else if (entrada.conflicto) mensaje.textContent = 'Conflicto: otra sesión cambió el procedimiento. Tu borrador se conserva, pero no sobrescribiremos el remoto. Compara las versiones y descarta el borrador solo cuando hayas revisado tus cambios.';
+            else if (entrada.error) mensaje.textContent = entrada.error;
+            else if (entregado()) mensaje.textContent = 'Orden entregada o no disponible: solo lectura.' + (entrada.sucio ? ' Tu borrador sin guardar se conserva para revisión.' : '');
+            else if (entrada.sucio) mensaje.textContent = 'Cambios sin guardar. Borrador conservado en esta pestaña.';
+            else if (!entrada.remoto) mensaje.textContent = 'Guía inicial pendiente de confirmar y guardar.';
+            else if (navigator.onLine === false || errorSincronizacion || sincronizacionOrdenes?.fromCache !== false || sincronizacionOrdenes?.hasPendingWrites !== false) mensaje.textContent = 'Versión local disponible; sincronización con el servidor pendiente.';
+            else mensaje.textContent = 'Procedimiento sincronizado con el servidor.';
+            actualizarEstadoRed();
+        };
+        const dibujar = () => {
+            lista.replaceChildren();
+            entrada.guia.pasos.forEach((paso, i) => {
+                const check = el('input', { attrs: { type: 'checkbox', 'data-proc-campo': 'paso-' + i } });
+                check.checked = !!paso.completado;
+                check.addEventListener('change', () => {
+                    if (!vigente() || entregado() || entrada.guardando || entrada.confirmando) return;
+                    entrada.guia.pasos[i].completado = check.checked;
+                    borradores.editar(entrada);
+                    actualizar();
+                });
+                lista.appendChild(el('li', {}, [el('label', {}, [check, el('span', { text: paso.texto })])]));
+            });
+            actualizar();
+        };
+        selector.addEventListener('change', async () => {
+            const tipo = selector.value;
+            if (!vigente() || entregado() || entrada.guardando || entrada.confirmando || tipo === entrada.guia.tipo) return;
+            entrada.confirmando = true;
+            actualizar();
+            const respuesta = await Swal.fire({ target: $('ficha-dialog').open ? $('ficha-dialog') : 'body', title: '¿Cambiar procedimiento?',
+                text: 'Se reemplazarán los pasos y se reiniciará el avance al guardar.',
+                icon: 'warning', showCancelButton: true, confirmButtonText: 'Cambiar', cancelButtonText: 'Cancelar' });
+            if (!vigente()) return;
+            entrada.confirmando = false;
+            if (respuesta.isConfirmed && !entregado()) {
+                entrada.guia = Dominio.crearProcedimiento(tipo);
+                borradores.editar(entrada);
+            }
+            dibujar();
+            if (!bloque.isConnected) renderizarProyectos();
+        });
+        descartar.addEventListener('click', async () => {
+            if (!vigente() || entrada.guardando || entrada.confirmando) return;
+            entrada.confirmando = true;
+            actualizar();
+            const respuesta = await Swal.fire({ target: $('ficha-dialog').open ? $('ficha-dialog') : 'body', title: '¿Descartar tus cambios?',
+                text: 'Se perderá solo el borrador local y se cargará la última versión recibida. No se escribirá en la base.',
+                icon: 'warning', showCancelButton: true, confirmButtonText: 'Descartar borrador', cancelButtonText: 'Conservar' });
+            if (!vigente()) return;
+            entrada.confirmando = false;
+            if (respuesta.isConfirmed) borradores.aceptar(entrada, actual()?.procedimiento);
+            dibujar();
+            if (!bloque.isConnected) renderizarProyectos();
+        });
+        guardar.addEventListener('click', async () => {
+            if (!vigente() || entregado() || entrada.guardando || entrada.confirmando || entrada.conflicto) return;
+            borradores.editar(entrada); // Una guía por defecto también es un borrador si el envío falla.
+            entrada.guardando = true;
+            actualizar();
+            try {
+                const resultado = await ordenesRepositorio.guardarProcedimiento({ id: p.id, uid,
+                    base: entrada.base, guia: entrada.guia });
+                if (!vigente()) return;
+                borradores.aceptar(entrada, resultado);
+                toast('success', 'Procedimiento confirmado por el servidor');
+            } catch (err) {
+                if (!vigente()) return;
+                if (err.code === 'conflicto') entrada.conflicto = true;
+                entrada.error = err.code === 'sin-conexion' ? 'Sin conexión: borrador conservado. Reconecta y pulsa Guardar para validarlo; no se enviará automáticamente.' :
+                    'No se pudo guardar. Tu borrador sigue aquí. ' + (err.code === 'orden-entregada' ? 'La orden fue entregada.' : 'Revisa la conexión y vuelve a intentarlo.');
+            } finally {
+                if (vigente()) {
+                    entrada.guardando = false;
+                    actualizar();
+                    renderizarProyectos();
+                }
+            }
+        });
+        bloque.append(selector, progreso, lista, mensaje, guardar, comparar, descartar);
+        dibujar();
+        return bloque;
+    }
+
     function verHistorial(id) {
         const p = proyectos.find((x) => x.id === id);
         if (!p || typeof Swal === 'undefined') return null;
@@ -1355,7 +1645,10 @@
         if (!p || !currentUser || p.estado === 'entregado') return;
         $('resumen-entrega-firma').textContent = p.cliente + ' · Saldo: ' + CLP(calcularSaldo(p));
         $('chk-saldar-entrega').checked = false;
+        $('excepcion-entrega').value = '';
         currentFirmaId = id;
+        solicitudFirma++;
+        firmaBaseRevision = p.revisionOrden || 0;
         firmaTieneTrazos = false;
         // El canvas se dimensiona DESPUES de mostrar el modal: mientras esta
         // oculto getBoundingClientRect() devuelve 0 y la escala saldria mal.
@@ -1364,6 +1657,11 @@
     }
 
     async function eliminarProyectoPermanente(id) {
+        const orden = proyectos.find(p => p.id === id);
+        if (orden && (orden.schemaVersion >= 2 || orden.revisionOrden > 0)) {
+            Swal.fire('Orden con trazabilidad', 'Las órdenes nuevas o con operaciones registradas se conservan en el historial; no se eliminan pagos, firmas ni eventos.', 'info');
+            return;
+        }
         const r = await Swal.fire({
             title: 'Eliminar permanentemente?',
             text: 'Se borrara la orden, su evidencia y su firma. No se puede deshacer.',
@@ -1432,7 +1730,7 @@
 
         if (navigator.share) {
             try {
-                await navigator.share({ title: 'TechFix Tracker', text: texto, url });
+                await navigator.share({ title: 'KryoFix', text: texto, url });
                 return;
             } catch (err) {
                 if (err && err.name === 'AbortError') return; // el usuario cerro el dialogo
@@ -1488,8 +1786,9 @@
         boleta.appendChild(
             el('div', { class: 'boleta-cabecera' }, [
                 el('img', { attrs: { src: 'logo.jpg', alt: '', height: '40' } }),
-                el('h2', { text: 'TechFix Pro' }),
-                el('p', { text: 'Servicio Tecnico de Electronica' })
+                el('h2', { text: 'KryoFix' }),
+                el('p', { text: 'Servicio técnico de electrónica' }),
+                el('p', { text: 'Desarrollado por KryoDevs' })
             ])
         );
         boleta.appendChild(el('hr'));
@@ -1586,6 +1885,7 @@
 
     /** Ajusta el buffer del canvas al tamano real en pantalla (y a la densidad). */
     function prepararCanvas() {
+        isDrawing = false; punteroFirma = null;
         if (!canvas || !ctx) return;
         const r = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -1617,7 +1917,6 @@
         return { x: (punto.clientX - r.left) * escalaX, y: (punto.clientY - r.top) * escalaY };
     }
 
-    let isDrawing = false;
     function startDrawing(e) {
         if (!ctx) return;
         isDrawing = true;
@@ -1638,7 +1937,19 @@
         isDrawing = false;
     }
 
-    if (canvas) {
+    if (canvas && window.PointerEvent) {
+        canvas.addEventListener('pointerdown', e => {
+            if (punteroFirma !== null || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            punteroFirma = e.pointerId;
+            startDrawing(e);
+            try { canvas.setPointerCapture(e.pointerId); } catch (_e) { /* Evento sintético o puntero ya liberado. */ }
+        });
+        canvas.addEventListener('pointermove', e => { if (e.pointerId === punteroFirma) draw(e); });
+        const terminar = e => { if (e.pointerId === punteroFirma) { stopDrawing(); punteroFirma = null; } };
+        canvas.addEventListener('pointerup', terminar);
+        canvas.addEventListener('pointercancel', terminar);
+        canvas.addEventListener('lostpointercapture', terminar);
+    } else if (canvas) {
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stopDrawing);
@@ -1648,6 +1959,12 @@
         canvas.addEventListener('touchend', stopDrawing);
         canvas.addEventListener('touchcancel', stopDrawing);
     }
+
+    const ajustarAltoVisible = () => document.documentElement.style.setProperty('--alto-visible',
+        (window.visualViewport?.height || window.innerHeight) + 'px');
+    window.visualViewport?.addEventListener('resize', ajustarAltoVisible);
+    window.addEventListener('resize', ajustarAltoVisible);
+    ajustarAltoVisible();
 
     // Trampa de foco: el tabulador no debe escapar del modal.
     const SELECTOR_ENFOCABLES = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -1661,6 +1978,10 @@
     }
 
     function cerrarModalFirma() {
+        solicitudFirma++;
+        const guardar = $('btn-guardar-firma');
+        if (guardar) { guardar.disabled = false; guardar.textContent = 'Confirmar y entregar'; }
+        isDrawing = false; punteroFirma = null;
         modalFirma.style.display = 'none';
         modalFirma.setAttribute('aria-hidden', 'true');
         currentFirmaId = null;
@@ -1684,6 +2005,7 @@
     });
 
     escuchar('btn-limpiar-firma', 'click', () => {
+        isDrawing = false; punteroFirma = null;
         if (ctx) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1706,7 +2028,8 @@
             return;
         }
         const equipoActual = proyectos.find((x) => x.id === currentFirmaId);
-        if (!equipoActual) return;
+        if (!equipoActual || !currentUser) return;
+        const uidFirma = currentUser.uid, sesionFirma = epocaSesion, solicitudEnviada = solicitudFirma;
         const etiqueta = btn.textContent;
         btn.textContent = 'Guardando...';
         btn.disabled = true;
@@ -1719,44 +2042,23 @@
             tctx.fillRect(0, 0, t.width, t.height);
             tctx.drawImage(canvas, 0, 0, t.width, t.height);
             const dataUrl = t.toDataURL('image/jpeg', 0.5);
+            if (SPARK && pesoEnBytes(dataUrl) > 32 * 1024) throw new Error('La firma supera 32 KiB. Limpia el lienzo y vuelve a firmar.');
 
-            const uid = currentUser ? currentUser.uid : equipoActual && equipoActual.uid;
-            const ahora = Date.now();
-            const parche = {
-                estado: 'entregado',
-                pin: '',
-                abono: $('chk-saldar-entrega').checked ? Number(equipoActual.costo) : Number(equipoActual.abono || 0),
-                firmaCliente: dataUrl,
-                fechaEntrega: ahora,
-                uid
-            };
-            if (!(equipoActual && equipoActual.fechaReparacion)) parche.fechaReparacion = ahora;
-            const historial = entradaHistorial('entregado', uid);
-            if (historial) parche.historial = historial;
-
+            if (!currentUser) return;
             const idFirmado = currentFirmaId;
-            const lote = db.batch ? db.batch() : null;
-            if (lote) {
-                lote.update(db.collection(COL_EQUIPOS).doc(idFirmado), parche);
-                lote.set(
-                    db.collection(COL_SEGUIMIENTO).doc(idFirmado),
-                    documentoSeguimiento(uid, 'entregado', equipoActual ? equipoActual.modelo : '')
-                );
-                await lote.commit();
-            } else {
-                await db.collection(COL_EQUIPOS).doc(idFirmado).update(parche);
-                await db
-                    .collection(COL_SEGUIMIENTO)
-                    .doc(idFirmado)
-                    .set(documentoSeguimiento(uid, 'entregado', equipoActual ? equipoActual.modelo : ''));
-            }
+            await tallerServicio.ejecutar({ id: idFirmado, uid: currentUser.uid, revision: firmaBaseRevision,
+                opId: tallerServicio.nuevoId(), accion: 'entregar', datos: {
+                    firma: dataUrl, saldar: $('chk-saldar-entrega').checked,
+                    excepcion: $('excepcion-entrega').value.trim()
+                } });
+            if (currentUser?.uid !== uidFirma || epocaSesion !== sesionFirma || solicitudFirma !== solicitudEnviada) return;
             cerrarModalFirma();
             toast('success', 'Equipo entregado con firma');
+            migrarArchivoNuevo(idFirmado, 'firmaCliente', uidFirma, sesionFirma);
         } catch (err) {
-            avisarError('No se pudo guardar la firma', err);
+            if (currentUser?.uid === uidFirma && epocaSesion === sesionFirma && solicitudFirma === solicitudEnviada) avisarError('No se pudo guardar la firma', err);
         } finally {
-            btn.textContent = etiqueta;
-            btn.disabled = false;
+            if (epocaSesion === sesionFirma && solicitudFirma === solicitudEnviada) { btn.textContent = etiqueta; btn.disabled = false; }
         }
     });
 
@@ -1764,34 +2066,36 @@
     // 8. PWA / SERVICE WORKER
     // ========================
     function avisarVersionNueva(reg) {
-        if (typeof Swal === 'undefined') return;
-        Swal.fire({
-            title: 'Version nueva disponible',
-            text: 'Hay una actualizacion de la aplicacion. Recarga para usarla.',
-            icon: 'info',
-            showCancelButton: true,
-            confirmButtonText: 'Recargar ahora',
-            cancelButtonText: 'Mas tarde'
-        }).then((r) => {
-            if (!r.isConfirmed) return;
-            if (navigator.serviceWorker.controller) {
-                navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+        if ($('actualizacion-disponible')) return;
+        const aviso = el('aside', { class: 'aviso-actualizacion', attrs: { id: 'actualizacion-disponible', role: 'status' } });
+        const mensaje = el('span', { text: 'Hay una versión nueva de KryoFix. Puedes actualizar cuando termines de guardar.' });
+        const actualizar = el('button', { class: 'btn-icon', text: 'Actualizar KryoFix', attrs: { type: 'button' } });
+        actualizar.addEventListener('click', () => {
+            const recepcionPendiente = ['cliente', 'telefono', 'falla'].some(id => $(id)?.value.trim()) || fotoComprimidaBase64 || procesandoFoto;
+            if (ficha.tienePendientes() || borradores.pendientes().length || recepcionPendiente || modalFirma?.style.display === 'flex') {
+                mensaje.textContent = 'Guarda o descarta los borradores y la recepción, y cierra la firma antes de actualizar.';
+                return;
             }
-            if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            else window.location.reload();
+            actualizar.disabled = true;
+            if (reg.waiting) {
+                navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            } else window.location.reload();
         });
+        aviso.append(mensaje, actualizar); document.body.prepend(aviso);
     }
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker
             .register('sw.js')
             .then((reg) => {
-                if (reg.waiting && navigator.serviceWorker.controller) avisarVersionNueva(reg);
+                if (reg.waiting && reg.active && navigator.serviceWorker.controller) avisarVersionNueva(reg);
                 reg.addEventListener('updatefound', () => {
                     const nuevo = reg.installing;
                     if (!nuevo) return;
+                    const reemplazaVersion = !!reg.active && reg.active !== nuevo;
                     nuevo.addEventListener('statechange', () => {
-                        if (nuevo.state === 'installed' && navigator.serviceWorker.controller) avisarVersionNueva(reg);
+                        if (reemplazaVersion && nuevo.state === 'installed' && reg.waiting) avisarVersionNueva(reg);
                     });
                 });
             })
@@ -2061,16 +2365,10 @@
         mostrarCampoLibre('marca-otro', esOtro);
         mostrarCampoLibre('modelo-otro', esOtro);
         selModelo.hidden = esOtro;
+        refrescarProblemas();
         if (esOtro || !marca) return;
 
-        const modelos = [
-            ...new Set(
-                catalogoDB
-                    .filter((c) => String(c.marca || '').toLowerCase() === marca.toLowerCase())
-                    .map((c) => c.modelo)
-                    .filter(Boolean)
-            )
-        ].sort();
+        const modelos = Dominio.obtenerModelos(marca, catalogoDB, proyectos);
         for (const m of modelos) selModelo.appendChild(el('option', { text: m, attrs: { value: m } }));
         selModelo.appendChild(el('option', { text: 'Otro (fuera de catalogo)', attrs: { value: 'Otro' } }));
         selModelo.disabled = false;
@@ -2080,6 +2378,7 @@
         const modelo = e.target.value;
         resetearReparaciones();
         mostrarCampoLibre('modelo-otro', modelo === 'Otro');
+        refrescarProblemas();
         if (!modelo || modelo === 'Otro') return;
 
         const selRep = $('tipo-reparacion');
@@ -2089,6 +2388,9 @@
         selRep.appendChild(el('option', { text: 'Otra (precio manual)', attrs: { value: 'Otra' } }));
         selRep.disabled = false;
     });
+
+    escuchar('marca-otro', 'input', refrescarProblemas);
+    escuchar('modelo-otro', 'input', refrescarProblemas);
 
     escuchar('tipo-reparacion', 'change', (e) => {
         const repId = e.target.value;
@@ -2184,91 +2486,54 @@
             Swal.fire('Vacio', 'No hay equipos para exportar con el filtro actual.', 'info');
             return;
         }
-        const nombre = 'techfix_ordenes_' + new Date().toISOString().split('T')[0] + '.csv';
+        const nombre = 'kryofix_ordenes_' + new Date().toISOString().split('T')[0] + '.csv';
         const ok = descargarArchivo(nombre, exportCSV(visibles), 'text/csv;charset=utf-8;');
         if (ok) toast('success', visibles.length + ' orden(es) exportadas');
         else if (typeof Swal !== 'undefined') Swal.fire('No se pudo exportar', 'El navegador bloqueo la descarga.', 'error');
     });
 
     // ========================
-    // 14. MIGRACION DE DATOS ANTIGUOS (ejecucion manual, una sola vez)
+    // 14. MIGRACION HEREDADA BLOQUEADA
     // ========================
-    /**
-     * Prepara los datos creados por la version anterior:
-     *   1. Rellena el campo `uid` en ordenes que no lo tienen (si no, con las
-     *      reglas nuevas quedarian inaccesibles para siempre).
-     *   2. Crea el espejo publico `seguimiento` de cada orden, para que los QR ya
-     *      impresos sigan funcionando.
-     *
-     * IMPORTANTE: debe ejecutarse desde la consola del navegador, con sesion
-     * iniciada y ANTES de desplegar firestore.rules:
-     *     await TechFix.migrar()
-     */
     async function migrar() {
-        if (!currentUser) {
-            console.error('Inicia sesion antes de migrar.');
-            return;
-        }
-        const snapshot = await db.collection(COL_EQUIPOS).get();
-        let adoptados = 0;
-        let espejos = 0;
-        let lote = db.batch();
-        let pendientes = 0;
-
-        for (const doc of snapshot.docs) {
-            const data = doc.data();
-            const uid = data.uid || currentUser.uid;
-            if (!data.uid) {
-                lote.update(db.collection(COL_EQUIPOS).doc(doc.id), { uid });
-                adoptados++;
-                pendientes++;
-            }
-            if (uid === currentUser.uid) {
-                lote.set(
-                    db.collection(COL_SEGUIMIENTO).doc(doc.id),
-                    documentoSeguimiento(uid, data.estado || 'ingresado', data.modelo)
-                );
-                espejos++;
-                pendientes++;
-            }
-            if (pendientes >= 400) {
-                await lote.commit();
-                lote = db.batch();
-                pendientes = 0;
-            }
-        }
-        if (pendientes) await lote.commit();
-
-        const resumen = `Migracion lista: ${adoptados} orden(es) adoptadas, ${espejos} espejo(s) de seguimiento.`;
-        console.log(resumen);
-        Swal.fire('Migracion completada', resumen, 'success');
-        return { adoptados, espejos };
+        await Swal.fire('Migración administrativa requerida',
+            'La adopción de órdenes sin propietario desde el navegador fue deshabilitada. Usa un respaldo, un mapa de propietarios verificado y una herramienta administrativa auditada.', 'warning');
+        return { bloqueada: true };
     }
 
     // ========================
     // 15. INDICADOR DE RED
     // ========================
-    let temporizadorRed = null;
     function actualizarEstadoRed() {
         const statusObj = $('red-status');
         if (!statusObj) return;
-        if (temporizadorRed) {
-            clearTimeout(temporizadorRed);
-            temporizadorRed = null;
-        }
-        const enLinea = typeof navigator.onLine === 'boolean' ? navigator.onLine : true;
-        statusObj.textContent = enLinea ? '📶 Online' : '📵 Offline (se guardara al recuperar la conexion)';
-        statusObj.className = 'badge-estado ' + (enLinea ? 'estado-reparado' : 'estado-revision');
+        const enLinea = navigator.onLine !== false;
+        let texto = 'Online · Verificando sincronización de órdenes…';
+        let estado = 'revision';
+        if (errorSincronizacion) texto = 'Error de sincronización de órdenes. Reintenta la conexión o inicia sesión nuevamente.';
+        else if (!enLinea) texto = 'Offline · Datos locales; sincronización no confirmada';
+        else if (sincronizacionOrdenes?.hasPendingWrites) texto = 'Online · Órdenes pendientes de sincronizar';
+        else if (sincronizacionOrdenes?.fromCache) texto = 'Online · Datos en caché; esperando al servidor';
+        else if (sincronizacionOrdenes?.fromCache === false && sincronizacionOrdenes?.hasPendingWrites === false) { texto = 'Online · Órdenes sincronizadas'; estado = 'reparado'; }
+        statusObj.textContent = texto;
+        statusObj.className = 'badge-estado estado-' + estado;
         statusObj.style.display = 'inline-block';
-        if (enLinea) {
-            // Solo se oculta el aviso de "en linea": el de offline debe quedar visible.
-            temporizadorRed = setTimeout(() => {
-                statusObj.style.display = 'none';
-            }, 3000);
+        const resumen = $('borradores-status');
+        if (resumen) {
+            const pendientes = borradores.pendientes();
+            const conflictos = pendientes.filter(e => e.conflicto).length;
+            resumen.hidden = !pendientes.length;
+            resumen.textContent = pendientes.length + ' procedimiento(s) pendiente(s) de guardar o confirmar' +
+                (conflictos ? ' · ' + conflictos + ' con conflicto' : '') + '. Los borradores viven solo en esta pestaña; guarda antes de salir.';
         }
     }
     window.addEventListener('online', actualizarEstadoRed);
     window.addEventListener('offline', actualizarEstadoRed);
+    window.addEventListener('beforeunload', event => {
+        if (!borradores.pendientes().length && !ficha.tienePendientes()) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
 
     function renderizarFiltrosRapidos() {
         const contenedor = $('filtros-rapidos');
@@ -2326,6 +2591,8 @@
     // ========================
     window.TechFix = {
         iniciada: true,
+        tallerServicio,
+        abrirFicha: id => ficha.abrir(id),
         ESTADOS,
         ESTADO_TEXTO,
         PLAZO_ENTREGA_DIAS,

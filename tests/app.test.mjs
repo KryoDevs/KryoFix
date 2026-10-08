@@ -202,7 +202,7 @@ describe('Ticket, QR y numero de orden', () => {
         await tick(20);
 
         const guardado = [...db._datos.get('equipos').values()][0];
-        assert.match(guardado.idOrden, /^TF-\d{6}-\d{3}$/, `numero de orden inesperado: ${guardado.idOrden}`);
+        assert.match(guardado.idOrden, /^KRF-\d{6}$/, `numero de orden inesperado: ${guardado.idOrden}`);
 
         window.TechFix.imprimirBoleta([...db._datos.get('equipos').keys()][0]);
         assert.ok(
@@ -221,7 +221,7 @@ describe('Firma digital', () => {
         canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 300, right: 600, bottom: 300 });
 
         window.TechFix.archivarProyecto('a');
-        const ev = new window.MouseEvent('mousedown', { clientX: 600, clientY: 300, bubbles: true });
+        const ev = new window.PointerEvent('pointerdown', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 600, clientY: 300, bubbles: true });
         canvas.dispatchEvent(ev);
 
         const ultimo = trazos.at(-1);
@@ -262,8 +262,8 @@ describe('Firma digital', () => {
         });
         window.TechFix.archivarProyecto('a');
         const canvas = document.getElementById('canvas-firma');
-        canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 10, clientY: 10, bubbles: true }));
-        canvas.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 30, clientY: 40, bubbles: true }));
+        canvas.dispatchEvent(new window.PointerEvent('pointerdown', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 10, clientY: 10, bubbles: true }));
+        canvas.dispatchEvent(new window.PointerEvent('pointermove', { isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 30, clientY: 40, bubbles: true }));
         document.getElementById('btn-guardar-firma').click();
         await tick(20);
 
@@ -291,7 +291,7 @@ describe('Estados: transiciones y recordatorios', () => {
 
     test('el selector de la tarjeta deshabilita los estados no alcanzables', async () => {
         const { document } = await sesionIniciada({ equipos: { a: equipo({ estado: 'ingresado' }) } });
-        const select = document.querySelector('#lista-proyectos select');
+        const select = document.querySelector('#lista-proyectos select[data-accion="estado"]');
         assert.equal(select.querySelector('option[value="entregado"]').disabled, true);
         assert.equal(select.querySelector('option[value="reparado"]').disabled, false);
     });

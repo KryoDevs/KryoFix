@@ -12,7 +12,7 @@
  *   - Firestore / Auth / APIs: NUNCA se interceptan.
  * ========================================================================== */
 
-const VERSION = 'v7';
+const VERSION = 'v18';
 const CACHE_APP = `techfix-app-${VERSION}`;
 const CACHE_VENDOR = `techfix-vendor-${VERSION}`;
 const CACHES_VIGENTES = [CACHE_APP, CACHE_VENDOR];
@@ -22,10 +22,18 @@ const RECURSOS_APP = [
     './',
     './index.html',
     './status.html',
+    './aprobacion.html',
+    './aprobacion.js',
     './estilos.css',
     './tema.js',
+    './entorno.js',
     './dominio.js',
     './app.js',
+    './borradores.js',
+    './ordenes-repositorio.js',
+    './taller-dominio.js',
+    './taller-servicio.js',
+    './ficha.js',
     './status.js',
     './manifest.json',
     './logo.jpg',
@@ -74,8 +82,8 @@ self.addEventListener('install', (event) => {
         (async () => {
             await precachearTolerante(CACHE_APP, RECURSOS_APP);
             await precachearTolerante(CACHE_VENDOR, RECURSOS_VENDOR);
-            // Activa la version nueva sin esperar a que se cierren las pestanas.
-            await self.skipWaiting();
+            // Primera instalación se activa sola. Una actualización espera
+            // SKIP_WAITING explícito: no interrumpir firmas o borradores abiertos.
         })()
     );
 });
@@ -143,11 +151,12 @@ self.addEventListener('fetch', (event) => {
     } catch (_e) {
         return;
     }
+    if (url.pathname.startsWith('/api/')) return; // Datos privados: jamás cachear API del mismo origen.
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
     if (DOMINIOS_EXCLUIDOS.some((d) => url.hostname === d || url.hostname.endsWith('.' + d))) return;
 
     if (request.mode === 'navigate') {
-        const respaldo = url.pathname.endsWith('/status.html') ? './status.html' : './index.html';
+        const respaldo = url.pathname.endsWith('/status.html') ? './status.html' : url.pathname.endsWith('/aprobacion.html') ? './aprobacion.html' : './index.html';
         event.respondWith(redPrimero(request, CACHE_APP, respaldo));
         return;
     }
