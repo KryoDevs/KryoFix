@@ -35,6 +35,7 @@
     <script defer src="borradores.js"></script>
     <script defer src="ordenes-repositorio.js"></script>
     <script defer src="taller-dominio.js"></script>
+    <script defer src="taller-prioridades.js"></script>
     <script defer src="taller-servicio.js"></script>
     <script defer src="ficha.js"></script>
     <script defer src="app.js"></script>
@@ -88,6 +89,7 @@
             </div>
             <nav class="user-actions" aria-label="Acciones de usuario">
                 <span id="red-status" class="badge-estado estado-reparado" style="display: none;" role="status" aria-live="polite">📶 Online</span>
+                <button type="button" id="btn-respaldo" class="btn-icon" title="Descargar una copia de todas tus órdenes, pagos, clientes e inventario">💾 Respaldo</button>
                 <button type="button" id="btn-gestion" class="btn-icon">Gestión del taller</button>
                 <span id="user-email-display" class="user-email"></span>
                 <div class="nav-segment" role="group" aria-label="Vistas principales">
@@ -103,7 +105,10 @@
         <main>
         <!-- VISTA: TALLER -->
         <section id="vista-taller" aria-label="Taller">
+            <p id="aviso-respaldo" class="aviso-bloque" role="status" aria-live="polite" hidden></p>
+            <section id="panel-prioridades" class="panel-prioridades" aria-labelledby="titulo-prioridades" hidden></section>
             <div id="aviso-tope-carga" class="aviso-bloque" role="status" hidden></div>
+            <div id="panel-sin-conexion" class="aviso-bloque aviso-offline" role="status" aria-live="polite" hidden></div>
             <div id="aviso-vencidos" class="aviso-bloque" role="status" hidden></div>
 
             <div class="dashboard" aria-label="Indicadores clave del taller">
@@ -165,6 +170,10 @@
                 <div id="cuerpo-ingreso" class="cuerpo-colapsable">
                     <form id="proyecto-form" novalidate>
                         <div class="form-section-title">1. Datos del Cliente</div>
+                        <div id="clientes-frecuentes" class="clientes-frecuentes" hidden>
+                            <span class="detalle-extra">Clientes frecuentes:</span>
+                            <div id="lista-frecuentes" class="chips-frecuentes" role="group" aria-label="Clientes frecuentes, un toque para reutilizar"></div>
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="cliente">Nombre del Cliente:</label>

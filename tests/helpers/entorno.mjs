@@ -48,7 +48,13 @@ export function crearFirestoreFalso(semilla = {}) {
     };
 
     function snapshotDe(coleccion, filtros) {
-        let docs = [...col(coleccion).entries()].map(([id, data]) => ({ id, data: () => ({ ...data }) }));
+        // El SDK real expone doc.ref; sin el, el codigo que reasigna documentos
+        // desde un snapshot no se ejercita en las pruebas y parece funcionar.
+        let docs = [...col(coleccion).entries()].map(([id, data]) => ({
+            id,
+            ref: { _ref: { coleccion, id } },
+            data: () => ({ ...data })
+        }));
         for (const f of filtros.where) {
             docs = docs.filter((d) => d.data()[f.campo] === f.valor);
         }
@@ -191,7 +197,8 @@ export function crearFirestoreFalso(semilla = {}) {
                             data: () => serializado === undefined ? undefined : JSON.parse(serializado) };
                     },
                     update: (ref, valor) => lote.update(ref, valor),
-                    set: (ref, valor) => lote.set(ref, valor)
+                    set: (ref, valor) => lote.set(ref, valor),
+                    delete: (ref) => lote.delete(ref)
                 });
                 if (api._antesCommit) await api._antesCommit();
                 if (api._errorTransaccion) throw api._errorTransaccion;
@@ -398,6 +405,7 @@ export function montarApp({
     window.eval(leer('app/borradores.js'));
     window.eval(leer('app/ordenes-repositorio.js'));
     window.eval(leer('app/taller-dominio.js'));
+    window.eval(leer('app/taller-prioridades.js'));
     window.eval(leer('app/taller-servicio.js'));
     window.eval(leer('app/ficha.js'));
     window.KryoFixEntorno = { modo: 'completo', firebase: { projectId: 'demo-kryofix' } };

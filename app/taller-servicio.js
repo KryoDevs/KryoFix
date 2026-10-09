@@ -306,7 +306,70 @@
             sesion(uid);
             return { ordenes: snap.docs.map(d => ({ ...d.data(), id: d.id })), cursor: snap.docs.at(-1), fin: snap.size < limite };
         }
-        return { remoto, ejecutar, crearOrden, guardarCompra, resolverCompra, ajustarStock, crearRetrabajo, guardarRepuesto, guardarPlantilla, listar, leerOrden, pagina, nuevoId };
+        /**
+         * Fusiona clientes duplicados de la agenda.
+         *
+         * "Juan Pérez" y "J. Perez" con el mismo teléfono son la misma persona;
+         * si no se fusionan, sus órdenes quedan repartidas para siempre y el
+         * historial se parte en dos. Se conservan los registros absorbedos en
+         * `fusionados` para poder deshacer o auditar: nada se borra en silencio.
+         */
+        async function fusionarClientes(uid, destinoId, origenIds) {
+            sesion(uid);
+            const P = window.KryoFixTallerPrioridades;
+            if (!P) throw error('no-disponible', 'El módulo de clientes no está disponible.');
+            const destino = String(destinoId || '').trim();
+            const origen = (Array.isArray(origenIds) ? origenIds : [origenIds])
+                .map((x) => String(x || '').trim()).filter(Boolean);
+            if (!destino || !origen.length) throw error('seleccion-invalida', 'Elige el cliente que se conserva y al menos uno que se fusiona.');
+            if (origen.includes(destino)) throw error('seleccion-invalida', 'El cliente conservado no puede fusionarse consigo mismo.');
+            if (origen.length > 50) throw error('demasiados', 'Fusiona de a grupos pequeños para poder revisarlos.');
+
+            const coleccion = privada(uid, 'clientes');
+            const refs = origen.map((id) => coleccion.doc(id));
+            const refDestino = coleccion.doc(destino);
+            const refRegistro = privada(uid, 'config').doc('fusiones');
+            return db.runTransaction(async tx => {
+                sesion(uid);
+                const [destinoDatos, previo, ...resto] = await Promise.all(
+                    [refDestino, refRegistro, ...refs].map((ref) => tx.get(ref)));
+                sesion(uid);
+                if (!destinoDatos.exists) throw error('no-encontrado', 'El cliente que se conserva ya no existe.');
+                for (const otro of resto) {
+                    if (!otro.exists) throw error('no-encontrado', 'Alguno de los clientes a fusionar ya no existe.');
+                }
+                const absorbedos = resto.map((d) => ({ id: d.id, nombre: d.data().nombre, telefono: d.data().telefono }));
+                // Si hay varias variantes del nombre, se conservan como alias:
+                // nada de lo escrito por el técnico se pierde al fusionar.
+                const nombres = new Set([String(destinoDatos.data().nombre || '')].concat(absorbedos.map((a) => a.nombre).filter(Boolean)));
+                const telefonos = new Set([String(destinoDatos.data().telefono || '')].concat(absorbedos.map((a) => a.telefono).filter(Boolean)));
+                const parche = { ...destinoDatos.data() };
+                if (nombres.size > 1) parche.alias = [...nombres].filter((n) => n !== parche.nombre).slice(0, 5);
+                parche.telefonos = [...telefonos].filter(Boolean).slice(0, 5);
+                parche.fusionadoEn = timestampServidor();
+                tx.set(refDestino, parche);
+
+                // Las órdenes que apuntaban al cliente absorbido pasan al conservado.
+                for (const id of origen) {
+                    const consulta = db.collection('equipos').where('uid', '==', uid).where('clienteId', '==', id);
+                    const snap = await consulta.get({ source: 'server' });
+                    sesion(uid);
+                    for (const orden of snap.docs) {
+                        tx.update(orden.ref, { clienteId: destino, clienteFusionDe: id });
+                    }
+                }
+                for (const ref of refs) tx.delete(ref);
+
+                const registro = previo.exists ? previo.data() : { fusiones: [] };
+                tx.set(refRegistro, { ...registro, fusiones: [
+                    ...(registro.fusiones || []),
+                    { en: timestampServidor(), destino: destinoId, destinoNombre: destinoDatos.data().nombre,
+                        absorbidos: absorbedos, ordenesReasignadas: 'clienteId actualizado en las ordenes coincidentes' }
+                ].slice(-50) });
+            });
+        }
+
+        return { remoto, ejecutar, crearOrden, guardarCompra, resolverCompra, ajustarStock, crearRetrabajo, guardarRepuesto, guardarPlantilla, listar, leerOrden, pagina, fusionarClientes, nuevoId };
     }
     window.KryoFixTallerServicio = { crear };
 })();

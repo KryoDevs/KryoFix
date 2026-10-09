@@ -78,7 +78,7 @@
         if (typeof firebase === 'undefined') faltantes.push('Firebase');
         if (typeof Swal === 'undefined') faltantes.push('SweetAlert2');
         if (!window.TechFixDominio) faltantes.push('Dominio');
-        if (!window.KryoFixBorradores || !window.KryoFixOrdenes || !window.KryoFixTallerServicio || !window.KryoFixTallerDominio || !window.KryoFixFicha) faltantes.push('Módulos de órdenes');
+        if (!window.KryoFixBorradores || !window.KryoFixOrdenes || !window.KryoFixTallerServicio || !window.KryoFixTallerDominio || !window.KryoFixTallerPrioridades || !window.KryoFixFicha) faltantes.push('Módulos de órdenes');
         return faltantes;
     }
 
@@ -195,6 +195,7 @@
         }
     }
     escuchar('btn-gestion', 'click', () => ficha.gestion());
+    escuchar('btn-respaldo', 'click', () => exportarRespaldoCompleto());
     escuchar('btn-cliente-recurrente', 'click', async () => {
         if (!currentUser) return;
         const uid = currentUser.uid;
@@ -214,6 +215,39 @@
     });
     escuchar('cliente', 'input', () => { clienteSeleccionadoId = null; });
     escuchar('telefono', 'input', () => { clienteSeleccionadoId = null; });
+
+    /**
+     * Atajo de cliente frecuente: un toque rellena nombre y teléfono.
+     * Antes había que escribir el número completo y esperar el diálogo de
+     * selección, en un taller donde los mismos clientes vuelven siempre.
+     */
+    function pintarClientesFrecuentes(clientes) {
+        const caja = $('lista-frecuentes');
+        const bloque = $('clientes-frecuentes');
+        if (!caja || !bloque) return;
+        const top = window.KryoFixTallerPrioridades.frecuentes(clientes, { limite: 6 });
+        caja.replaceChildren();
+        if (!top.length) { bloque.hidden = true; return; }
+        bloque.hidden = false;
+        for (const c of top) {
+            const chip = el('button', {
+                class: 'chip-frecuente',
+                text: c.nombre,
+                attrs: { type: 'button', title: c.telefono + (c.visitas ? ' · ' + c.visitas + ' visita(s)' : '') }
+            });
+            chip.addEventListener('click', () => {
+                if (!currentUser) return;
+                $('cliente').value = c.nombre;
+                $('telefono').value = c.telefono;
+                clienteSeleccionadoId = c.id || null;
+                if (form) form.inert = false;
+                toast('success', 'Cliente ' + c.nombre + ' seleccionado');
+                const marca = $('marca');
+                if (marca && !marca.value) marca.focus();
+            });
+            caja.appendChild(chip);
+        }
+    }
 
     // ========================
     // UTILIDADES
@@ -433,6 +467,12 @@
         filtroCatalogo = '';
         // El aviso de tope depende de los datos de esta sesion: no puede quedar
         // visible despues de cerrar sesion.
+        const chips = $('lista-frecuentes');
+        if (chips) chips.replaceChildren();
+        const bloqueClientes = $('clientes-frecuentes');
+        if (bloqueClientes) bloqueClientes.hidden = true;
+        const panel = $('panel-prioridades');
+        if (panel) { panel.hidden = true; panel.replaceChildren(); }
         const tope = $('aviso-tope-carga');
         if (tope) { tope.hidden = true; tope.replaceChildren(); delete tope.dataset.lleno; }
         if (form) reiniciarFormulario();
@@ -480,6 +520,7 @@
             rotularAlcanceDeCarga();
             cargarDatos();
             cargarCatalogo();
+            cargarClientesFrecuentes();
             if (!mismoUsuario) {
                 toast('success', 'Bienvenido!');
                 const id = new URLSearchParams(window.location.hash.slice(1)).get('orden');
@@ -708,7 +749,41 @@
         aviso.hidden = false;
     }
 
+    /**
+ * Panel "¿qué ataco hoy?": convierte el tablero en acciones concretas.
+ * Antes había que revisar el estado de cada tarjeta para saber si había
+ * plata sin cobrar o clientes esperando hace semanas.
+ */
+    function renderizarPrioridades() {
+        const panel = $('panel-prioridades');
+        if (!panel) return;
+        const puntos = window.KryoFixTallerPrioridades.prioridades(proyectos);
+        if (!puntos.length) {
+            panel.hidden = true;
+            panel.replaceChildren();
+            return;
+        }
+        panel.hidden = false;
+        panel.replaceChildren(el('div', { class: 'panel-prioridades-cabecera' }, [
+            el('h2', { text: '🎯 Qué ataco hoy' }),
+            el('span', { class: 'contador-pill', text: puntos.length + (puntos.length === 1 ? ' pendiente' : ' pendientes') })
+        ]));
+        for (const punto of puntos) {
+            const bloque = el('div', { class: 'prioridad-bloque' + (punto.urgente ? ' urgente' : '') }, [
+                el('h3', { text: (punto.urgente ? '🔴 ' : '• ') + punto.titulo + ' (' + punto.cuenta + ')' })
+            ]);
+            const lista = el('ul', { class: 'ficha-lista' });
+            for (const d of punto.detalle) lista.appendChild(el('li', { text: d }));
+            if (punto.cuenta > punto.detalle.length) {
+                lista.appendChild(el('li', { class: 'detalle-extra', text: '… y ' + (punto.cuenta - punto.detalle.length) + ' más. Usa el buscador o el historial.' }));
+            }
+            bloque.appendChild(lista);
+            panel.appendChild(bloque);
+        }
+    }
+
     function actualizarDashboard() {
+        renderizarPrioridades();
         const ahora = new Date();
         const mes = ahora.getMonth();
         const anio = ahora.getFullYear();
@@ -815,6 +890,7 @@
         }
 
         tarjeta.appendChild(el('p', { class: 'proxima-accion', text: 'Próxima acción: ' + window.KryoFixTallerDominio.siguienteAccion(p) }));
+        tarjeta.appendChild(marcaDeMovimiento(p));
         tarjeta.appendChild(el('p', { class: 'tarjeta-falla', text: 'Falla: ' + (p.falla || 'Sin detalle') }));
         if (p.problemaComun) tarjeta.appendChild(el('p', { class: 'detalle-extra', text: 'Síntoma de recepción: ' + p.problemaComun.titulo + ' (pendiente de validación técnica)' }));
         tarjeta.appendChild(seccionProcedimiento(p));
@@ -938,34 +1014,17 @@
         return tarjeta;
     }
 
-    /**
-     * Normaliza para buscar: sin mayusculas y sin tildes.
-     * "gonzalez" debe encontrar "González": en Chile casi nadie escribe la
-     * tilde cuando busca, y antes la orden quedaba escondida.
-     */
-    function normalizarBusqueda(texto) {
-        return String(texto || '')
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
-    }
-
     /** Ordenes que cumplen el buscador, el filtro y el criterio de orden activos. */
     function proyectosFiltrados() {
+        // El módulo de prioridades aporta la búsqueda profunda (diagnóstico,
+        // notas, presupuesto, historial), no solo los datos de la tarjeta.
         const consulta = buscador ? buscador.value : '';
-        // Varios términos en cualquier orden: "apple gonzalez" y "gonzalez apple"
-        // deben dar el mismo resultado. Antes solo funcionaba el orden exacto.
-        const terminos = normalizarBusqueda(consulta).split(' ').filter(Boolean);
+        const terminos = window.KryoFixTallerPrioridades.terminos(consulta);
         const filtro = filtroEstado ? filtroEstado.value : 'activos';
         const criterio = ordenarProyectos ? ordenarProyectos.value : 'recientes';
 
         const lista = proyectos.filter((p) => {
-            const campos = normalizarBusqueda([p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
-                .filter(Boolean)
-                .join(' '));
-            if (terminos.length && !terminos.every(t => campos.includes(t))) return false;
+            if (!window.KryoFixTallerPrioridades.coincide(p, terminos)) return false;
             if (filtro === 'activos') return p.estado !== 'entregado';
             if (filtro === 'con-saldo') return calcularSaldo(p) > 0;
             if (filtro !== 'todos') return p.estado === filtro;
@@ -996,13 +1055,11 @@
     function sugerirAmpliacionBusqueda() {
         const aviso = $('aviso-busqueda');
         if (!aviso) return;
-        const consulta = buscador ? buscador.value : '';
-        const terminos = normalizarBusqueda(consulta).split(' ').filter(Boolean);
+        const terminos = window.KryoFixTallerPrioridades.terminos(buscador ? buscador.value : '');
         if (terminos.length < 2) { aviso.hidden = true; aviso.textContent = ''; return; }
         const casi = proyectos.filter((p) => {
-            const campos = normalizarBusqueda([p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
-                .filter(Boolean).join(' '));
-            return terminos.filter(t => campos.includes(t)).length >= terminos.length - 1;
+            const texto = window.KryoFixTallerPrioridades.textoBuscable(p);
+            return terminos.filter((t) => texto.includes(t)).length >= terminos.length - 1;
         }).length;
         if (!casi) { aviso.hidden = true; aviso.textContent = ''; return; }
         aviso.textContent = casi === 1 ? '1 orden coincide con casi todos los términos escritos.' : casi + ' órdenes coinciden con casi todos los términos escritos.';
@@ -1054,6 +1111,32 @@
         }
     }
 
+    /**
+ * Marca de movimiento: qué se tocó por última vez y hace cuánto.
+ * Permite ver de un vistazo qué órdenes se movieron hoy, sobre todo cuando
+ * trabajan dos personas sobre el mismo taller.
+ */
+    function marcaDeMovimiento(p) {
+        const envoltura = el('p', { class: 'detalle-extra movimiento-orden' });
+        const garantias = window.KryoFixTallerPrioridades.diasDesde(
+            p.garantia && p.garantia.estado !== 'cerrada' ? (p.garantia.en || p.fechaEntrega) : 0);
+        const marca = el('span', { class: 'chip-movimiento' });
+        if (p.garantia && p.garantia.estado !== 'cerrada' && garantias !== null && garantias >= 30) {
+            marca.className = 'chip-movimiento garantia-vencida';
+            marca.textContent = garantias > 30 ? '🔒 Garantía vencida hace ' + garantias + ' días' : '🔒 Garantía por vencer';
+            marca.title = 'La garantía sigue abierta: contacta al cliente antes de que se cierre.';
+            envoltura.appendChild(marca);
+        }
+        const ultima = Number(p.actualizado || p.fechaReparacion || p.fechaEntrega || p.timestamp || 0);
+        const dias = window.KryoFixTallerPrioridades.diasDesde(ultima);
+        if (dias !== null) {
+            const texto = dias === 0 ? 'Actualizada hoy' : dias === 1 ? 'Actualizada ayer' : 'Actualizada hace ' + dias + ' días';
+            envoltura.appendChild(el('span', { class: 'chip-movimiento', text: '🕘 ' + texto }));
+        }
+        if (!envoltura.childNodes.length) envoltura.remove();
+        return envoltura;
+    }
+
     /** Aviso de equipos listos que el cliente no ha venido a retirar. */
     function revisarRecordatorios() {
         renderizarAvisos(
@@ -1103,6 +1186,12 @@
                 break;
             case 'ticket':
                 imprimirBoleta(id);
+                break;
+            case 'pdf':
+                guardarComprobantePDF(proyectos.find((x) => x.id === id));
+                break;
+            case 'respaldo':
+                exportarRespaldoCompleto();
                 break;
             case 'compartir':
                 compartirTicket(id);
@@ -2236,6 +2325,24 @@
     // ========================
     // 10. CATALOGO DE PRECIOS
     // ========================
+    /**
+     * Agenda de clientes para el atajo de recepción. Es una lectura extra al
+     * entrar: si falla, el resto de la app sigue igual.
+     */
+    async function cargarClientesFrecuentes() {
+        if (!currentUser) return;
+        const uid = currentUser.uid;
+        try {
+            const clientes = await tallerServicio.listar(uid, 'clientes');
+            if (!currentUser || currentUser.uid !== uid) return;
+            pintarClientesFrecuentes(clientes);
+        } catch (err) {
+            const bloque = $('clientes-frecuentes');
+            if (bloque) bloque.hidden = true;
+            console.warn('KryoFix · no se pudo cargar la agenda de clientes:', err && err.code);
+        }
+    }
+
     function cargarCatalogo() {
         if (!currentUser) return;
         unsubscribeCatalogo = db
@@ -2569,6 +2676,102 @@
         return '\ufeff' + lineas.join('\r\n');
     }
 
+    /**
+ * Respaldo completo del taller.
+ *
+ * El CSV anterior solo exportaba lo que se veía en pantalla, y no incluía
+ * pagos, historial, repuestos ni clientes. Este respaldo recorre TODAS las
+ * órdenes por páginas del servidor y lasPrivadas de cada una.
+ *
+ * Advertencia honesta: un archivo descargado en el navegador no es un respaldo
+ * verificado. Si la sesión se cierra antes de elegir la carpeta, el archivo se
+ * pierde. Por eso se avisa antes y después.
+ */
+    async function exportarRespaldoCompleto() {
+        if (!currentUser) return;
+        const uid = currentUser.uid;
+        if (exportandoRespaldo) return;
+        exportandoRespaldo = true;
+        const aviso = $('aviso-respaldo');
+        const progreso = (texto) => { if (aviso) { aviso.hidden = false; aviso.textContent = texto; } };
+        try {
+            progreso('Consultando todas las órdenes…');
+            const todas = new Map();
+            let cursor = null, fin = false, paginas = 0;
+            while (!fin && paginas < 60) {
+                const pagina = await tallerServicio.pagina(uid, cursor);
+                if (!currentUser || currentUser.uid !== uid) return;
+                pagina.ordenes.forEach((p) => todas.set(p.id, p));
+                cursor = pagina.cursor; fin = pagina.fin; paginas++;
+                progreso('Órdenes consultadas: ' + todas.size + '…');
+            }
+            if (!fin) {
+                Swal.fire('Respaldo incompleto', 'Se detuvo la consulta en ' + todas.size +
+                    ' órdenes para no agotar la cuota de Firebase. Vuelve a intentarlo más tarde o exporta por páginas.', 'warning');
+                return;
+            }
+            progreso('Consultando pagos, clientes, repuestos e historial…');
+            const [pagos, clientes, repuestos, compras, movimientos, plantillas] = await Promise.all([
+                tallerServicio.listar(uid, 'pagos'),
+                tallerServicio.listar(uid, 'clientes'),
+                tallerServicio.listar(uid, 'repuestos'),
+                tallerServicio.listar(uid, 'compras'),
+                tallerServicio.listar(uid, 'movimientosStock'),
+                tallerServicio.listar(uid, 'plantillas')
+            ]);
+            if (!currentUser || currentUser.uid !== uid) return;
+            progreso('Preparando el archivo…');
+            const ordenes = [...todas.values()];
+            const respaldo = {
+                formato: 'kryofix-respaldo', version: 1,
+                generado: new Date().toISOString(),
+                taller: uid,
+                aviso: 'Copia de datos de tu taller. Contiene datos personales de clientes y, si existen, PIN y firmas. Guárdalo en un lugar privado.',
+                resumen: { ordenes: ordenes.length, pagos: pagos.length, clientes: clientes.length,
+                    repuestos: repuestos.length, compras: compras.length, movimientos: movimientos.length,
+                    plantillas: plantillas.length },
+                ordenes, pagos, clientes, repuestos, compras, movimientos, plantillas
+            };
+            const nombre = 'kryofix_respaldo_' + new Date().toISOString().slice(0, 10) + '.json';
+            const ok = descargarArchivo(nombre, JSON.stringify(respaldo, null, 1), 'application/json');
+            progreso('');
+            if (aviso) aviso.hidden = true;
+            if (!ok) {
+                Swal.fire('No se pudo descargar', 'El navegador bloqueó la descarga. Revisa los permisos de descargas de este sitio.', 'error');
+                return;
+            }
+            Swal.fire('Respaldo descargado', ordenes.length + ' órdenes, ' + pagos.length + ' pagos, ' +
+                clientes.length + ' clientes, ' + repuestos.length + ' lotes de repuestos y ' + movimientos.length +
+                ' movimientos de inventario.\n\nGuárdalo en un lugar privado: contiene datos de clientes.', 'success');
+        } catch (err) {
+            progreso('');
+            if (aviso) aviso.hidden = true;
+            avisarError('No se pudo generar el respaldo', normalizarError(err));
+        } finally {
+            exportandoRespaldo = false;
+        }
+    }
+
+    /**
+ * Descarga el comprobante como PDF.
+ *
+ * Se usa el diálogo de impresión del navegador con "Guardar como PDF": no
+ * depende de una librería externa, funciona sin conexión y respects lo que el
+ * sistema elige. Es más confiable que window.print() suelto, que además
+ * depende de los estilos de impresión del navegador del técnico.
+ */
+    function guardarComprobantePDF(p) {
+        if (!p) return;
+        prepararBoleta(p);
+        setTimeout(() => {
+            try {
+                window.print();
+            } catch (e) {
+                Swal.fire('No se pudo abrir la impresión', 'Abre el comprobante y usa el menú de impresión para guardarlo como PDF.', 'warning');
+            }
+        }, 400);
+    }
+
     function descargarArchivo(nombre, contenido, tipo) {
         try {
             const blob = new Blob([contenido], { type: tipo });
@@ -2626,14 +2829,41 @@
         statusObj.textContent = texto;
         statusObj.className = 'badge-estado estado-' + estado;
         statusObj.style.display = 'inline-block';
+        const pendientes = borradores.pendientes();
+        if (!enLinea) mostrarPanelSinConexion(pendientes); else ocultarPanelSinConexion();
         const resumen = $('borradores-status');
         if (resumen) {
-            const pendientes = borradores.pendientes();
             const conflictos = pendientes.filter(e => e.conflicto).length;
             resumen.hidden = !pendientes.length;
             resumen.textContent = pendientes.length + ' procedimiento(s) pendiente(s) de guardar o confirmar' +
                 (conflictos ? ' · ' + conflictos + ' con conflicto' : '') + '. Los borradores viven solo en esta pestaña; guarda antes de salir.';
         }
+    }
+
+    /**
+     * Sin conexión la app sigue.se$viendo, pero no todo se puede guardar.
+     * En vez de dejar que el técnico descubra los bloqueos uno por uno con un
+     * error por acción, se dice de entrada qué sí funciona y qué no.
+     */
+    function mostrarPanelSinConexion(pendientes) {
+        const panel = $('panel-sin-conexion');
+        if (!panel) return;
+        panel.hidden = false;
+        panel.replaceChildren(
+            el('span', { class: 'aviso-titulo', text: '📴 Trabajando sin conexión' }),
+            el('p', { class: 'detalle-extra', text: 'Puedes consultar las órdenes ya descargadas, revisar fichas, imprimir tickets y preparar borradores.' }),
+            el('p', { class: 'detalle-extra', text: 'Quedan en espera: guardar procedimientos, presupuestos, pagos, cambios de estado y entregas. Necesitan confirmación del servidor.' }),
+            pendientes && pendientes.length
+                ? el('p', { class: 'detalle-extra', text: '⚠ Tienes ' + pendientes.length + ' borrador(es) sin guardar. Viven solo en esta pestaña: si cierras el navegador o recargas la página, se pierden.' })
+                : el('p', { class: 'detalle-extra', text: 'No hay borradores sin guardar. Nada se perderá al reconectar.' })
+        );
+    }
+
+    function ocultarPanelSinConexion() {
+        const panel = $('panel-sin-conexion');
+        if (!panel) return;
+        panel.hidden = true;
+        panel.replaceChildren();
     }
     window.addEventListener('online', actualizarEstadoRed);
     window.addEventListener('offline', actualizarEstadoRed);
@@ -2672,6 +2902,7 @@
         buscador.focus();
     });
 
+    let exportandoRespaldo = false; // evita dos respaldos simultáneos y cuota duplicada
     let importandoCatalogo = false;
     escuchar('btn-catalogo-base', 'click', async () => {
         if (!currentUser || importandoCatalogo) return;

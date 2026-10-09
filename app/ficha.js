@@ -117,6 +117,38 @@
         const ejecutar = (accion, datos, opId) => servicio.ejecutar({ id: orden.id, uid: usuario().uid,
             revision: orden.revisionOrden || 0, accion, datos, opId });
         function info(texto) { cuerpo.appendChild(nodo('p', texto, 'texto-ayuda')); }
+
+    /**
+     * Propone fusionar clientes que parecen la misma persona.
+     * No fusiona solo: el técnico elige cuál se conserva y lo confirma leyendo
+     * qué registros se van a absorber. Homónimos legítimos no se tocan.
+     */
+    function dibujarFusiones(clientes, grupos) {
+        const bloque = nodo('section', undefined, 'panel-fusiones');
+        bloque.appendChild(nodo('h3', { text: 'Posibles clientes repetidos (' + grupos.length + ')' }));
+        bloque.appendChild(nodo('p', { class: 'texto-ayuda', text: 'Mismo teléfono o nombre casi igual. Al fusionar, sus órdenes quedan juntas en la persona que conserves. Los registros absorbidos se guardan en el historial de fusiones: no se borra nada sin dejar rastro.' }));
+        for (const grupo of grupos) {
+            const todos = [grupo.base, ...grupo.candidatos];
+            const f = formulario('Fusionar en el cliente elegido', async (d) => {
+                const origen = todos.filter(c => c.id !== d.destinoId).map(c => c.id);
+                const elegido = todos.find(c => c.id === d.destinoId);
+                const r = await window.Swal.fire({ target: dialogo,
+                    title: 'Confirmar fusión de clientes',
+                    text: 'Se conserva "' + elegido.nombre + '" y se absorben ' + origen.length +
+                        ' registro(s). Las órdenes quedarán juntas en "' + elegido.nombre + '". Revisa que sean la misma persona.',
+                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Fusionar', cancelButtonText: 'Volver' });
+                if (!r.isConfirmed) return;
+                await servicio.fusionarClientes(usuario().uid, d.destinoId, origen);
+                if (!vigente(token)) return;
+                aviso.textContent = 'Clientes fusionados. Recarga la sección para ver la agenda actualizada.';
+            });
+            campo(f, 'destinoId', 'Cliente que se conserva', { opciones: todos.map(c => [c.id, c.nombre + ' · ' + c.telefono]), requerido: true });
+            f.appendChild(nodo('p', { class: 'detalle-extra', text: 'Se fusionan por ' + grupo.motivo + ': ' + todos.map(c => c.nombre).join(' · ') }));
+            f.finalizar();
+            bloque.appendChild(f);
+        }
+        cuerpo.appendChild(bloque);
+    }
         async function dibujar(limpiarAviso = true) {
             const t = ++token;
             if (limpiarAviso) aviso.textContent = '';
@@ -368,11 +400,18 @@
             if (seccion === 'Clientes') {
                 const clientes = await servicio.listar(uid, 'clientes'); if (!vigente(t)) return;
                 info('Agenda creada desde nuevas recepciones. Los registros anteriores no se fusionan automáticamente.');
+                const grupos = window.KryoFixTallerPrioridades.duplicados(clientes);
+                if (grupos.length) dibujarFusiones(clientes, grupos);
                 const buscar = campo(cuerpo, 'buscar-cliente', 'Buscar cliente por nombre o teléfono');
                 const lista = nodo('ul', undefined, 'ficha-lista'); cuerpo.appendChild(lista);
                 const pintar = () => {
                     lista.replaceChildren();
-                    for (const c of clientes.filter(c => (c.nombre + ' ' + c.telefono).toLowerCase().includes(buscar.value.toLowerCase()))) lista.appendChild(nodo('li', c.nombre + ' · ' + c.telefono));
+                    const q = window.KryoFixTallerPrioridades.clave(buscar.value);
+                    for (const c of clientes.filter(c => window.KryoFixTallerPrioridades.clave((c.nombre || '') + ' ' + (c.telefono || '')).includes(q))) {
+                        const li = nodo('li', c.nombre + ' · ' + c.telefono);
+                        if (c.alias && c.alias.length) li.appendChild(nodo('small', { class: 'detalle-extra', text: ' · también como ' + c.alias.join(', ') }));
+                        lista.appendChild(li);
+                    }
                 }; buscar.addEventListener('input', pintar); pintar();
             } else if (seccion === 'Inventario') {
                 info('Cada ingreso crea un lote de compra; no edita ni sobrescribe stock reservado. La compatibilidad debe verificarse en cada orden.');

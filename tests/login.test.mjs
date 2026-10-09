@@ -243,3 +243,78 @@ test('si casi todos los terminos coinciden, se sugiere ampliar en vez de un sile
     await buscar(c, 'gonzalez');
     assert.equal(aviso.hidden, true);
 });
+
+// ---------------------------------------------------------------------------
+// Panel de prioridades, garantía vencida y modo sin conexión
+// ---------------------------------------------------------------------------
+
+test('el panel de prioridades aparece con trabajo pendiente real', async t => {
+    const c = montarApp({
+        semilla: { equipos: {
+            o1: { uid: 'dueno', cliente: 'Ana Lara', estado: 'entregado', costo: 50000, abono: 20000, schemaVersion: 2, revisionOrden: 0, timestamp: 1, fechaEntrega: Date.now() - 40 * 86400000 }
+        } },
+        antesDeIniciar: (w) => { w.KryoFixEntorno.modo = 'spark'; }
+    });
+    t.after(() => c.dom.window.close());
+    c.auth._entrar({ uid: 'dueno', email: 't@e.cl' });
+    await tick(80);
+    const panel = c.document.getElementById('panel-prioridades');
+    assert.equal(panel.hidden, false, 'debe mostrar el panel cuando hay trabajo pendiente');
+    assert.match(panel.textContent, /Cobrar saldo en equipos ya entregados/);
+    assert.match(panel.textContent, /\$30\.000/);
+});
+
+test('el panel se oculta cuando no hay nada que hacer', async t => {
+    const c = montarApp({
+        semilla: { equipos: { o1: { uid: 'dueno', cliente: 'Tranquila', estado: 'ingresado', costo: 0, abono: 0, schemaVersion: 2, revisionOrden: 0, timestamp: Date.now() } } },
+        antesDeIniciar: (w) => { w.KryoFixEntorno.modo = 'spark'; }
+    });
+    t.after(() => c.dom.window.close());
+    c.auth._entrar({ uid: 'dueno', email: 't@e.cl' });
+    await tick(80);
+    assert.equal(c.document.getElementById('panel-prioridades').hidden, true, 'no debe inventar trabajo');
+});
+
+test('la tarjeta muestra la garantía vencida y la última actualización', async t => {
+    const c = montarApp({
+        semilla: { equipos: {
+            o1: { uid: 'dueno', cliente: 'María', estado: 'entregado', costo: 0, abono: 0, schemaVersion: 2, revisionOrden: 0,
+                timestamp: Date.now() - 40 * 86400000, fechaEntrega: Date.now() - 40 * 86400000,
+                garantia: { estado: 'abierta', en: Date.now() - 35 * 86400000 } }
+        } },
+        antesDeIniciar: (w) => { w.KryoFixEntorno.modo = 'spark'; }
+    });
+    t.after(() => c.dom.window.close());
+    c.auth._entrar({ uid: 'dueno', email: 't@e.cl' });
+    await tick(80);
+    // La garantía se crea al entregar: hay que ver el historial, no solo activos.
+    c.document.getElementById('filtro-estado').value = 'todos';
+    c.document.getElementById('filtro-estado').dispatchEvent(new c.window.Event('change', { bubbles: true }));
+    await tick(40);
+    const tarjeta = c.document.querySelector('[data-id="o1"]');
+    assert.ok(tarjeta, 'la orden debe estar visible en el historial');
+    assert.match(tarjeta.textContent, /Garantía vencida hace 35 días/, 'debe advertir la garantía vencida');
+    assert.match(tarjeta.textContent, /Actualizada/, 'debe indicar cuándo se movió por última vez');
+});
+
+test('sin conexión se explica qué sí funciona y qué queda en espera', async t => {
+    const c = montarApp({
+        semilla: { equipos: { o1: { uid: 'dueno', cliente: 'Ana', estado: 'ingresado', costo: 0, abono: 0, schemaVersion: 2, revisionOrden: 0, timestamp: Date.now() } } },
+        antesDeIniciar: (w) => { w.KryoFixEntorno.modo = 'spark'; }
+    });
+    t.after(() => c.dom.window.close());
+    c.auth._entrar({ uid: 'dueno', email: 't@e.cl' });
+    await tick(60);
+    const panel = c.document.getElementById('panel-sin-conexion');
+    // jsdom permite simular la caida de red.
+    Object.defineProperty(c.window.navigator, 'onLine', { value: false, configurable: true });
+    c.document.dispatchEvent(new c.window.Event('offline'));
+    c.window.dispatchEvent(new c.window.Event('offline'));
+    await tick(30);
+    assert.match(panel.textContent, /Trabajando sin conexión/);
+    assert.match(panel.textContent, /pagos/, 'debe decir qué queda en espera');
+    Object.defineProperty(c.window.navigator, 'onLine', { value: true, configurable: true });
+    c.window.dispatchEvent(new c.window.Event('online'));
+    await tick(30);
+    assert.equal(panel.hidden, true, 'al volver la conexión debe retirarse el aviso');
+});
