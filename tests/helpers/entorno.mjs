@@ -227,6 +227,7 @@ export function crearFirestoreFalso(semilla = {}) {
 export function crearAuthFalso() {
     let observador = null;
     let usuario = null;
+    let falloAuth = null;
     return {
         get currentUser() {
             return usuario;
@@ -239,6 +240,8 @@ export function crearAuthFalso() {
             };
         },
         async signInWithEmailAndPassword(email) {
+            // Permite simular el rechazo real de Firebase en pruebas de login.
+            if (falloAuth) { const e = falloAuth; falloAuth = null; throw e; }
             usuario = { uid: 'uid-' + email.split('@')[0], email };
             if (observador) observador(usuario);
             return { user: usuario };
@@ -250,6 +253,9 @@ export function crearAuthFalso() {
         _entrar(u) {
             usuario = u;
             if (observador) observador(u);
+        },
+        _fallarCon(error) {
+            falloAuth = error;
         },
         setPersistence: () => Promise.resolve(),
         Auth: { Persistence: { LOCAL: 'local' } }

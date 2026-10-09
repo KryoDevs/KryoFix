@@ -103,6 +103,7 @@
         <main>
         <!-- VISTA: TALLER -->
         <section id="vista-taller" aria-label="Taller">
+            <div id="aviso-tope-carga" class="aviso-bloque" role="status" hidden></div>
             <div id="aviso-vencidos" class="aviso-bloque" role="status" hidden></div>
 
             <div class="dashboard" aria-label="Indicadores clave del taller">
@@ -148,7 +149,7 @@
                 </div>
             </div>
 
-            <p class="texto-ayuda">Indicadores calculados sobre las últimas 500 órdenes cargadas como máximo. No son un informe contable completo.</p>
+            <p class="texto-ayuda" id="ayuda-limite-carga">Indicadores calculados sobre las órdenes cargadas, con un máximo. No son un informe contable completo.</p>
             <p id="borradores-status" class="aviso-borradores" role="status" hidden></p>
             <div class="panel-ingreso">
                 <div class="panel-cabecera-colapsable">
@@ -230,7 +231,7 @@
                         <div class="form-section-title">3. Diagnostico, Evidencia y Presupuesto</div>
                         <section class="sugerencias-fallas" aria-labelledby="titulo-problemas">
                             <h3 id="titulo-problemas">Síntomas habituales y revisión rápida</h3>
-                            <p class="texto-ayuda">Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas (máximo 500), no a estadísticas del fabricante.</p>
+                            <p class="texto-ayuda" id="ayuda-frecuencias">Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas, no a estadísticas del fabricante.</p>
                             <p id="problemas-contexto" role="status">Selecciona marca y modelo para ver sugerencias.</p>
                             <label for="problema-comun">Síntoma reportado:</label>
                             <select id="problema-comun" disabled><option value="">-- Selecciona un síntoma --</option></select>
@@ -300,7 +301,8 @@
                     </div>
                     <div class="controles-busqueda">
                         <label class="sr-only" for="buscador">Buscar equipos</label>
-                        <input type="search" id="buscador" placeholder="🔍 Buscar por cliente, orden, modelo, falla o IMEI... (atajo: /)">
+                        <input type="search" id="buscador" placeholder="🔍 Cliente, orden, modelo, falla o IMEI. Varias palabras en cualquier orden, con o sin tildes. (atajo: /)">
+                        <p id="aviso-busqueda" class="detalle-extra" role="status" aria-live="polite" hidden></p>
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
                             <option value="activos">Solo activos en taller</option>

@@ -281,6 +281,7 @@
     }
 
     /** Crea un elemento con clase/texto/atributos en una sola llamada. */
+    const OPCIONES_EL = ['class', 'text', 'html', 'attrs'];
     function el(tag, opciones = {}, hijos = []) {
         const nodo = document.createElement(tag);
         if (opciones.class) nodo.className = opciones.class;
@@ -288,6 +289,12 @@
         if (opciones.html !== undefined) nodo.innerHTML = opciones.html;
         for (const [k, v] of Object.entries(opciones.attrs || {})) {
             if (v !== null && v !== undefined && v !== false) nodo.setAttribute(k, String(v));
+        }
+        // Antes se ignoraban en silencio las claves desconocidas (por ejemplo
+        // "id"), y el elemento se creaba sin el atributo esperado. Fallar aqui
+        // es preferible a un nodo invisible en pantalla que nadie depura.
+        for (const k of Object.keys(opciones)) {
+            if (!OPCIONES_EL.includes(k)) throw new Error('el(): opcion no admitida "' + k + '". Usa attrs para atributos HTML.');
         }
         for (const h of hijos) if (h) nodo.appendChild(h);
         return nodo;
@@ -424,6 +431,10 @@
         catalogoDB = [];
         pinesVisibles.clear();
         filtroCatalogo = '';
+        // El aviso de tope depende de los datos de esta sesion: no puede quedar
+        // visible despues de cerrar sesion.
+        const tope = $('aviso-tope-carga');
+        if (tope) { tope.hidden = true; tope.replaceChildren(); delete tope.dataset.lleno; }
         if (form) reiniciarFormulario();
         if ($('lista-catalogo')) $('lista-catalogo').replaceChildren();
         if (capaImpresion) capaImpresion.replaceChildren();
@@ -450,7 +461,13 @@
             limpiarSesionEnPantalla();
             loginScreen.style.display = 'flex'; appContent.style.display = 'none';
             auth.signOut().catch(() => {});
-            Swal.fire('Cuenta no autorizada', 'Inicia sesión con el usuario del taller cuyo UID se configuró al publicar. No se consultaron sus datos.', 'warning');
+            // Un UID de 28 caracteres se teclea mal con facilidad. Se muestran ambos
+            // para poder compararlos sin adivinar, y se indica como corregirlo.
+            console.warn('KryoFix · acceso denegado.\n  UID con el que entraste: ' + user.uid +
+                '\n  UID configurado al publicar: ' + window.KryoFixEntorno.propietarioUid +
+                '\n  Corrige con: npm run build:spark  ->  cd .spark  ->  node publicar-spark.mjs');
+            Swal.fire('Cuenta no autorizada', 'Tu usuario (UID ' + user.uid + ') no es el del taller. El sitio se publicó con el UID ' +
+                window.KryoFixEntorno.propietarioUid + '. Vuelve a publicar indicando el primero, o entra con el segundo. No se consultaron sus datos.', 'warning');
             return;
         }
         if (user) {
@@ -460,6 +477,7 @@
             loginScreen.style.display = 'none';
             appContent.style.display = 'block';
             if (userEmailDisplay) userEmailDisplay.textContent = user.email + (SPARK ? ' · Spark: sin facturación' : '');
+            rotularAlcanceDeCarga();
             cargarDatos();
             cargarCatalogo();
             if (!mismoUsuario) {
@@ -487,11 +505,22 @@
             await auth.signInWithEmailAndPassword(email, pass);
             loginForm.reset();
         } catch (error) {
+            // Problemas de CONFIGURACION del proyecto. No dependen de si el correo
+            // existe, asi que se pueden nombrar sin riesgo de enumeracion.
             const mensajes = {
-                'auth/too-many-requests': 'Demasiados intentos fallidos. Espera unos minutos.',
-                'auth/network-request-failed': 'Sin conexion con el servidor de autenticacion.',
-                'auth/invalid-email': 'El correo no tiene un formato valido.'
+                'auth/too-many-requests': 'Demasiados intentos fallidos. Espera unos minutos antes de reintentar.',
+                'auth/network-request-failed': 'Sin conexion con el servidor de autenticacion. Revisa tu internet.',
+                'auth/invalid-email': 'El correo no tiene un formato valido.',
+                'auth/operation-not-allowed': 'Este proyecto de Firebase no tiene habilitado el acceso con correo y contraseña. Actívalo en Authentication → Sign-in method → Correo/contraseña.',
+                'auth/invalid-api-key': 'La clave de la aplicación no es válida. El sitio está apuntando a otro proyecto o la clave fue revocada.',
+                'auth/api-key-not-valid': 'La clave de la aplicación no es válida. Revisa que el sitio y la configuración pertenezcan al mismo proyecto.',
+                'auth/app-not-authorized': 'Este dominio no está autorizado para usar Firebase Authentication. Agrégalo en Authentication → Settings → Authorized domains.',
+                'auth/unauthorized-domain': 'Este dominio no está autorizado para usar Firebase Authentication. Agrégalo en Authentication → Settings → Authorized domains.',
+                'auth/project-not-found': 'El proyecto de la configuración no existe. Revisa el identificador del proyecto en app/entorno.js.'
             };
+            // El codigo real se registra en consola: es la unica forma de distinguir
+            // "contrasena incorrecta" de "proveedor no habilitado" sin mostrarlo.
+            console.warn('KryoFix · error de acceso:', error.code, error.message || '');
             // Para credenciales erroneas se usa un mensaje generico a proposito:
             // no se revela si el correo existe o no (enumeracion de usuarios).
             if (typeof Swal !== 'undefined') {
@@ -639,6 +668,44 @@
                     }
                 }
             );
+    }
+
+    /**
+     * El tope de ordenes cargadas cambia segun el modo (100 en Spark, 500 con
+     * backend). Los textos de ayuda deben decir el numero real: si anuncian
+     * "500" cuando solo se cargan 100, el taller toma decisiones sobre una cifra
+     * que no ve completa.
+     */
+    function rotularAlcanceDeCarga() {
+        const ayuda = $('ayuda-limite-carga');
+        if (ayuda) {
+            ayuda.textContent = 'Indicadores calculados sobre las últimas ' + LIMITE_EQUIPOS +
+                ' órdenes cargadas como máximo. No son un informe contable completo.';
+        }
+        const frecuencias = $('ayuda-frecuencias');
+        if (frecuencias) {
+            frecuencias.textContent = 'Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas (máximo ' +
+                LIMITE_EQUIPOS + '), no a estadísticas del fabricante.';
+        }
+    }
+
+    /**
+     * Cuando la consulta llega al tope, el tablero esta incompleto aunque no lo
+     * parezca. Se avisa de forma explicita para que nadie tome un saldo parcial
+     * por el saldo real del taller.
+     */
+    function avisarTopeAlcanzado() {
+        const aviso = $('aviso-tope-carga');
+        if (!aviso) return;
+        if (proyectos.length < LIMITE_EQUIPOS) { aviso.hidden = true; aviso.replaceChildren(); return; }
+        if (aviso.dataset.lleno === '1') return;
+        aviso.dataset.lleno = '1';
+        aviso.replaceChildren(
+            el('span', { class: 'aviso-titulo', text: '⚠ Se alcanzaron ' + LIMITE_EQUIPOS + ' órdenes cargadas' }),
+            el('p', { class: 'detalle-extra', text: 'Los indicadores y el tablero solo cubren esas ' + LIMITE_EQUIPOS +
+                ' órdenes más recientes. Las anteriores no se muestran aquí: usa "Gestión del taller" → Historial para paginarlas, y el informe para sumar todo el taller.' })
+        );
+        aviso.hidden = false;
     }
 
     function actualizarDashboard() {
@@ -871,18 +938,34 @@
         return tarjeta;
     }
 
+    /**
+     * Normaliza para buscar: sin mayusculas y sin tildes.
+     * "gonzalez" debe encontrar "González": en Chile casi nadie escribe la
+     * tilde cuando busca, y antes la orden quedaba escondida.
+     */
+    function normalizarBusqueda(texto) {
+        return String(texto || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
     /** Ordenes que cumplen el buscador, el filtro y el criterio de orden activos. */
     function proyectosFiltrados() {
-        const txt = (buscador && buscador.value ? buscador.value : '').trim().toLowerCase();
+        const consulta = buscador ? buscador.value : '';
+        // Varios términos en cualquier orden: "apple gonzalez" y "gonzalez apple"
+        // deben dar el mismo resultado. Antes solo funcionaba el orden exacto.
+        const terminos = normalizarBusqueda(consulta).split(' ').filter(Boolean);
         const filtro = filtroEstado ? filtroEstado.value : 'activos';
         const criterio = ordenarProyectos ? ordenarProyectos.value : 'recientes';
 
         const lista = proyectos.filter((p) => {
-            const campos = [p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
+            const campos = normalizarBusqueda([p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
                 .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
-            if (txt && !campos.includes(txt)) return false;
+                .join(' '));
+            if (terminos.length && !terminos.every(t => campos.includes(t))) return false;
             if (filtro === 'activos') return p.estado !== 'entregado';
             if (filtro === 'con-saldo') return calcularSaldo(p) > 0;
             if (filtro !== 'todos') return p.estado === filtro;
@@ -905,12 +988,37 @@
         return lista;
     }
 
+    /**
+     * Con varios términos, el filtro puede quedar en cero por una sola palabra.
+     * Se calcula cuántos órdenes cumplirían el resto, para poder sugerir
+     * algo util en vez de un "sin resultados" seco.
+     */
+    function sugerirAmpliacionBusqueda() {
+        const aviso = $('aviso-busqueda');
+        if (!aviso) return;
+        const consulta = buscador ? buscador.value : '';
+        const terminos = normalizarBusqueda(consulta).split(' ').filter(Boolean);
+        if (terminos.length < 2) { aviso.hidden = true; aviso.textContent = ''; return; }
+        const casi = proyectos.filter((p) => {
+            const campos = normalizarBusqueda([p.cliente, p.equipo, p.modelo, p.falla, p.imei, p.accesorios, p.telefono, p.idOrden]
+                .filter(Boolean).join(' '));
+            return terminos.filter(t => campos.includes(t)).length >= terminos.length - 1;
+        }).length;
+        if (!casi) { aviso.hidden = true; aviso.textContent = ''; return; }
+        aviso.textContent = casi === 1 ? '1 orden coincide con casi todos los términos escritos.' : casi + ' órdenes coinciden con casi todos los términos escritos.';
+        aviso.hidden = false;
+    }
+
     function renderizarProyectos() {
         if (!listaProyectos) return;
         const filtrados = proyectosFiltrados();
         renderizarFiltrosRapidos();
+        avisarTopeAlcanzado();
+        sugerirAmpliacionBusqueda();
         if (contadorResultados) {
-            contadorResultados.textContent = filtrados.length + (filtrados.length === 1 ? ' orden' : ' ordenes');
+            // El contador distingue "estas son todas" de "solo se ve una parte".
+            const texto = filtrados.length + (filtrados.length === 1 ? ' orden' : ' ordenes');
+            contadorResultados.textContent = proyectos.length >= LIMITE_EQUIPOS ? texto + ' de las últimas ' + LIMITE_EQUIPOS : texto;
         }
 
         // El evento toggle se entrega de forma asíncrona; capturar también el DOM
