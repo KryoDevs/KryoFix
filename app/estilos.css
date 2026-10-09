@@ -1391,3 +1391,48 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 .aviso-actualizacion span { max-width: 760px; }
 
 .aviso-spark { margin: 12px; padding: 12px; border: 1px solid currentColor; border-radius: 8px; }
+
+/* --- Panel de prioridades del taller ------------------------------------ */
+.panel-prioridades {
+    margin: 0 0 18px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+.panel-prioridades-cabecera {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 12px;
+}
+.panel-prioridades-cabecera h2 { font-size: 16px; margin: 0; }
+.prioridad-bloque { padding: 10px 0; border-top: 1px solid var(--border-color); }
+.prioridad-bloque:first-of-type { border-top: none; }
+.prioridad-bloque h3 { font-size: 13.5px; margin: 0 0 6px; font-weight: 600; }
+.prioridad-bloque.urgente h3 { color: var(--danger); }
+.prioridad-bloque ul { margin: 0; padding-left: 18px; }
+.prioridad-bloque li { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+.chips-frecuentes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip-frecuente {
+    padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: var(--bg-card);
+    color: var(--text-main); font-size: 12.5px; cursor: pointer; min-height: 34px;
+}
+.chip-frecuente:hover { border-color: var(--primary); color: var(--primary); }
+.chip-frecuente:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.clientes-frecuentes { margin-bottom: 16px; }
+
+.movimiento-orden { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip-movimiento {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    background: var(--bg-muted); border: 1px solid var(--border-color);
+    font-size: 11px; color: var(--text-muted); white-space: nowrap;
+}
+.chip-movimiento.garantia-vencida {
+    color: var(--danger); border-color: var(--danger); background: transparent; font-weight: 600;
+}
+@media (pointer: coarse), (max-width: 640px) { .chip-frecuente { min-height: 44px; padding: 10px 15px; } }
+.panel-fusiones { margin: 12px 0; padding: 12px; border: 1px solid var(--danger); border-radius: var(--radius-sm); }
+.panel-fusiones h3 { font-size: 13.5px; margin: 0 0 6px; color: var(--danger); }
+.panel-fusiones .ficha-form { margin-top: 10px; }
+.aviso-offline { border-color: var(--warning); }
+.aviso-offline .aviso-titulo { color: var(--warning); }

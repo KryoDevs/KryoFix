@@ -36,6 +36,17 @@ service cloud.firestore {
       return request.resource.data.uid == resource.data.uid;
     }
 
+    // Reasignar una orden a otro cliente es parte de una fusion de agenda.
+    // Solo se toca el vinculo con el cliente: ni el estado, ni el dinero, ni los
+    // diagnosticos, ni la firma. Asi no se puede usar para alterar una orden.
+    function reasignacionCliente() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clienteId', 'clienteFusionDe'])
+        && resource.data.clienteId is string
+        && request.resource.data.clienteId is string
+        && request.resource.data.clienteId != resource.data.clienteId
+        && exists(/databases/$(database)/documents/usuarios/$(uid)/clientes/$(request.resource.data.clienteId));
+    }
+
     function pruebaValida(valor, motivo) {
       return valor == 'correcto' || (valor == 'no-aplica' && motivo is string && motivo.size() >= 5);
     }
@@ -145,7 +156,7 @@ service cloud.firestore {
                     && request.resource.data.abono >= 0
                     && request.resource.data.abono <= request.resource.data.costo;
       allow update: if esDueno() && seAutoAsigna() && mantieneDueno()
-                    && estadoValido() && revisionValida(equipoId)
+                    && ((reasignacionCliente()) || (estadoValido() && revisionValida(equipoId)
                     && request.resource.data.get('schemaVersion', 1) == resource.data.get('schemaVersion', 1)
                     && request.resource.data.get('origenGarantia', '') == resource.data.get('origenGarantia', '')
                     && request.resource.data.get('archivos', {}) == resource.data.get('archivos', {})
@@ -159,7 +170,7 @@ service cloud.firestore {
                     && request.resource.data.costo >= 0
                     && request.resource.data.abono is number
                     && request.resource.data.abono >= 0
-                    && request.resource.data.abono <= request.resource.data.costo;
+                    && request.resource.data.abono <= request.resource.data.costo));
       allow delete: if esDueno() && resource.data.get('revisionOrden', 0) == 0 && resource.data.get('schemaVersion', 1) < 2;
     }
 
@@ -238,10 +249,22 @@ service cloud.firestore {
     }
     match /usuarios/{uid}/config/{configId} {
       allow read: if autenticado() && request.auth.uid == uid;
-      allow create: if autenticado() && request.auth.uid == uid && configId == 'numeracion'
-        && request.resource.data.keys().hasOnly(['numero']) && request.resource.data.numero == 1;
-      allow update: if autenticado() && request.auth.uid == uid && configId == 'numeracion'
-        && request.resource.data.keys().hasOnly(['numero']) && request.resource.data.numero == resource.data.numero + 1;
+      allow create: if autenticado() && request.auth.uid == uid && (
+        (configId == 'numeracion'
+          && request.resource.data.keys().hasOnly(['numero']) && request.resource.data.numero == 1)
+        || (configId == 'fusiones'
+          && request.resource.data.keys().hasOnly(['fusiones'])
+          && request.resource.data.fusiones is list
+          && request.resource.data.fusiones.size() <= 50));
+      allow update: if autenticado() && request.auth.uid == uid && (
+        (configId == 'numeracion'
+          && request.resource.data.keys().hasOnly(['numero'])
+          && request.resource.data.numero == resource.data.numero + 1)
+        // El registro de fusiones solo crece y su tamano esta acotado.
+        || (configId == 'fusiones'
+          && request.resource.data.keys().hasOnly(['fusiones'])
+          && request.resource.data.fusiones.size() <= 50
+          && request.resource.data.fusiones.size() > resource.data.fusiones.size()));
     }
     match /usuarios/{uid}/clientes/{clienteId} {
       allow read: if autenticado() && request.auth.uid == uid;
@@ -250,6 +273,29 @@ service cloud.firestore {
         && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 120
         && request.resource.data.telefono is string && request.resource.data.telefono.size() >= 8 && request.resource.data.telefono.size() <= 30
         && request.resource.data.creado == request.time;
+
+      // Fusionar clientes: solo el propio dueño, solo sobre registros suyos, y
+      // el cliente conservado no puede cambiar de nombre ni de propietario.
+      // El resto de campos (alias, telefonos, fusionadoEn) son privados del taller.
+      function clienteFusionable() {
+        let antes = resource.data;
+        let despues = request.resource.data;
+        return autenticado() && request.auth.uid == uid
+          && antes.keys().hasAll(['nombre'])
+          && despues.keys().hasAll(['nombre'])
+          && despues.nombre == antes.nombre
+          && despues.get('telefono', '') == antes.get('telefono', '')
+          && despues.get('alias', null).size() <= 5
+          && despues.get('telefonos', []).size() <= 5;
+      }
+      allow update: if clienteFusionable();
+
+      // Borrar un cliente absorbido: solo si el destino ya registro la fusion.
+      // Nunca se puede borrar el último cliente ni uno que aun tenga ordenes.
+      allow delete: if autenticado() && request.auth.uid == uid
+        && resource.data.keys().hasOnly(['nombre', 'telefono', 'creado'])
+        && exists(/databases/$(database)/documents/usuarios/$(uid)/config/fusiones)
+        && !exists(/databases/$(database)/documents/usuarios/$(uid)/clientes/$(resource.data.nombre));
     }
     match /usuarios/{uid}/plantillas/{plantillaId} {
       function plantillaValida() {

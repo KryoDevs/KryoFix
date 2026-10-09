@@ -42,5 +42,8 @@ if (args.includes('hosting:sites:list')) console.log(JSON.stringify({status:'suc
         assert.deepEqual(comandos.at(-1), ['--yes', 'firebase-tools@15.32.1', 'deploy', '--project', 'kryofix', '--config', 'firebase.json', '--only', 'firestore:rules,firestore:indexes,hosting', '--non-interactive']);
         assert.match(readFileSync(join(salida, 'firestore.rules'), 'utf8'), /request.auth.uid == 'ana'/);
         assert.match(readFileSync(join(salida, 'app/entorno.js'), 'utf8'), /"propietarioUid":"ana"/);
+        // El publicador debe confirmar el UID guardado: si se teclea mal, el
+        // taller queda fuera del sistema y el sintoma aparece mucho despues.
+        assert.match(texto, /UID guardado en app\/entorno\.js: ana/);
     });
 }

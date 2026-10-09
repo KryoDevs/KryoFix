@@ -25,6 +25,12 @@ try {
     if (confirmar !== 'PUBLICAR') throw new Error('Cancelado. No se desplegó nada.');
     writeFileSync(resolve(cwd, 'firestore.rules'), reglas);
     writeFileSync(archivo, '/* Configuración WEB pública del taller. */\nwindow.KryoFixEntorno = ' + JSON.stringify({ ...entorno, propietarioUid: uid }) + ';\n');
+    // Se relee lo escrito: un UID de 28 caracteres tecleado mal deja al taller
+    // fuera del propio sistema y no es obvious hasta intentar iniciar sesión.
+    const guardado = JSON.parse(readFileSync(archivo, 'utf8').slice(readFileSync(archivo, 'utf8').indexOf('window.KryoFixEntorno = ') + 'window.KryoFixEntorno = '.length).trim().replace(/;$/, ''));
+    if (guardado.propietarioUid !== uid) throw new Error('El UID guardado no coincide con el indicado. No se desplegó.');
+    console.log('UID guardado en app/entorno.js: ' + guardado.propietarioUid + ' (' + guardado.propietarioUid.length + ' caracteres)');
+    console.log('Copia este texto: es el que debe decir Firebase > Authentication > Usuarios > UID.');
     rl.close();
     function firebase(args, json = false) {
         // Argumentos fijos: ningún texto del usuario llega al shell de Windows.

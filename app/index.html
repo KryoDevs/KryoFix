@@ -35,6 +35,7 @@
     <script defer src="borradores.js"></script>
     <script defer src="ordenes-repositorio.js"></script>
     <script defer src="taller-dominio.js"></script>
+    <script defer src="taller-prioridades.js"></script>
     <script defer src="taller-servicio.js"></script>
     <script defer src="ficha.js"></script>
     <script defer src="app.js"></script>
@@ -88,6 +89,7 @@
             </div>
             <nav class="user-actions" aria-label="Acciones de usuario">
                 <span id="red-status" class="badge-estado estado-reparado" style="display: none;" role="status" aria-live="polite">📶 Online</span>
+                <button type="button" id="btn-respaldo" class="btn-icon" title="Descargar una copia de todas tus órdenes, pagos, clientes e inventario">💾 Respaldo</button>
                 <button type="button" id="btn-gestion" class="btn-icon">Gestión del taller</button>
                 <span id="user-email-display" class="user-email"></span>
                 <div class="nav-segment" role="group" aria-label="Vistas principales">
@@ -103,6 +105,10 @@
         <main>
         <!-- VISTA: TALLER -->
         <section id="vista-taller" aria-label="Taller">
+            <p id="aviso-respaldo" class="aviso-bloque" role="status" aria-live="polite" hidden></p>
+            <section id="panel-prioridades" class="panel-prioridades" aria-labelledby="titulo-prioridades" hidden></section>
+            <div id="aviso-tope-carga" class="aviso-bloque" role="status" hidden></div>
+            <div id="panel-sin-conexion" class="aviso-bloque aviso-offline" role="status" aria-live="polite" hidden></div>
             <div id="aviso-vencidos" class="aviso-bloque" role="status" hidden></div>
 
             <div class="dashboard" aria-label="Indicadores clave del taller">
@@ -148,7 +154,7 @@
                 </div>
             </div>
 
-            <p class="texto-ayuda">Indicadores calculados sobre las últimas 500 órdenes cargadas como máximo. No son un informe contable completo.</p>
+            <p class="texto-ayuda" id="ayuda-limite-carga">Indicadores calculados sobre las órdenes cargadas, con un máximo. No son un informe contable completo.</p>
             <p id="borradores-status" class="aviso-borradores" role="status" hidden></p>
             <div class="panel-ingreso">
                 <div class="panel-cabecera-colapsable">
@@ -164,6 +170,10 @@
                 <div id="cuerpo-ingreso" class="cuerpo-colapsable">
                     <form id="proyecto-form" novalidate>
                         <div class="form-section-title">1. Datos del Cliente</div>
+                        <div id="clientes-frecuentes" class="clientes-frecuentes" hidden>
+                            <span class="detalle-extra">Clientes frecuentes:</span>
+                            <div id="lista-frecuentes" class="chips-frecuentes" role="group" aria-label="Clientes frecuentes, un toque para reutilizar"></div>
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="cliente">Nombre del Cliente:</label>
@@ -230,7 +240,7 @@
                         <div class="form-section-title">3. Diagnostico, Evidencia y Presupuesto</div>
                         <section class="sugerencias-fallas" aria-labelledby="titulo-problemas">
                             <h3 id="titulo-problemas">Síntomas habituales y revisión rápida</h3>
-                            <p class="texto-ayuda">Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas (máximo 500), no a estadísticas del fabricante.</p>
+                            <p class="texto-ayuda" id="ayuda-frecuencias">Orientaciones, no diagnósticos ni defectos confirmados del modelo. Las frecuencias corresponden solo a selecciones registradas en tus órdenes cargadas, no a estadísticas del fabricante.</p>
                             <p id="problemas-contexto" role="status">Selecciona marca y modelo para ver sugerencias.</p>
                             <label for="problema-comun">Síntoma reportado:</label>
                             <select id="problema-comun" disabled><option value="">-- Selecciona un síntoma --</option></select>
@@ -300,7 +310,8 @@
                     </div>
                     <div class="controles-busqueda">
                         <label class="sr-only" for="buscador">Buscar equipos</label>
-                        <input type="search" id="buscador" placeholder="🔍 Buscar por cliente, orden, modelo, falla o IMEI... (atajo: /)">
+                        <input type="search" id="buscador" placeholder="🔍 Cliente, orden, modelo, falla o IMEI. Varias palabras en cualquier orden, con o sin tildes. (atajo: /)">
+                        <p id="aviso-busqueda" class="detalle-extra" role="status" aria-live="polite" hidden></p>
                         <label class="sr-only" for="filtro-estado">Filtrar por estado</label>
                         <select id="filtro-estado">
                             <option value="activos">Solo activos en taller</option>
